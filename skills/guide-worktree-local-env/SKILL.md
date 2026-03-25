@@ -3,8 +3,11 @@ name: guide-worktree-local-env
 description: >-
   Blueprint for implementing a worktree-based concurrent local environment system in a repository.
 compatibility: Requires git. Template scripts are in Node.js but the approach works with any runtime.
+license: CC0 1.0
 metadata:
+  author: Paleo
   version: "0.1.0"
+  repository: https://github.com/paleo/skills
 ---
 
 # Implementing Worktree-Based Concurrent Local Environments

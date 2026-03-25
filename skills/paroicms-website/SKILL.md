@@ -1,6 +1,11 @@
 ---
 name: paroicms-website
 description: Guidelines for working on a ParoiCMS website directory. Use when developing or debugging website themes, templates, and configuration.
+license: CC0 1.0
+metadata:
+  author: Paleo
+  version: "0.1.0"
+  repository: https://github.com/paleo/skills
 ---
 
 # Working on a ParoiCMS Website
