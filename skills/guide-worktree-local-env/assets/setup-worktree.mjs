@@ -2,7 +2,7 @@
 // Template: setup-worktree.mjs
 //
 // This template uses a port step of 10, giving each worktree room for multiple
-// ports (e.g., slot 8010 → server 8010, secondary 8011). For single-port
+// ports (e.g., slot 8010 → frontend 8010, server 8011). For single-port
 // projects, simplify: remove PORT_STEP, the modulo check in isValidPort(),
 // and the secondary port derivation.
 //
@@ -24,10 +24,10 @@ import { parseArgs } from "node:util";
 
 // ADAPT: Port scheme — adjust base port, step, and range for your project.
 // With a step of 10 you get room for multiple ports per slot.
-const BASE_SERVER_PORT = 8000;
+const BASE_PORT = 8100;
 const PORT_STEP = 10;
-const MIN_PORT = BASE_SERVER_PORT + PORT_STEP;
-const MAX_PORT = BASE_SERVER_PORT + 9 * PORT_STEP;
+const MIN_PORT = BASE_PORT + PORT_STEP;
+const MAX_PORT = BASE_PORT + 9 * PORT_STEP;
 
 // ADAPT: Path to the slot registry file (stored in a shared/symlinked directory).
 const SLOTS_FILE = ".local/worktree-slots.json";
@@ -37,7 +37,7 @@ function isValidPort(port) {
     Number.isInteger(port) &&
     port >= MIN_PORT &&
     port <= MAX_PORT &&
-    (port - BASE_SERVER_PORT) % PORT_STEP === 0
+    (port - BASE_PORT) % PORT_STEP === 0
   );
 }
 
@@ -123,6 +123,8 @@ if (args.free) {
     [freedPort] = entry;
   }
 
+  
+
   delete registry.slots[freedPort];
   writeSlots(registry);
   console.log(`Freed slot ${freedPort}.`);
@@ -133,18 +135,18 @@ if (args.free) {
 
 const registry = readSlots();
 const resolvedCurrent = resolve(currentWorktree);
-let serverPort;
+let frontendPort;
 
 if (args.slot !== undefined) {
-  serverPort = Number(args.slot);
-  if (!isValidPort(serverPort)) {
-    console.error(`Error: Slot must be a valid server port: ${allPorts().join(", ")}.`);
+  frontendPort = Number(args.slot);
+  if (!isValidPort(frontendPort)) {
+    console.error(`Error: Slot must be a valid port: ${allPorts().join(", ")}.`);
     process.exit(1);
   }
-  const existing = registry.slots[String(serverPort)];
+  const existing = registry.slots[String(frontendPort)];
   if (existing && resolve(existing.worktree) !== resolvedCurrent) {
     console.error(
-      `Error: Slot ${serverPort} is already taken by ${existing.worktree} (branch: ${existing.branch}).`,
+      `Error: Slot ${frontendPort} is already taken by ${existing.worktree} (branch: ${existing.branch}).`,
     );
     process.exit(1);
   }
@@ -153,28 +155,28 @@ if (args.slot !== undefined) {
     ([, v]) => resolve(v.worktree) === resolvedCurrent,
   );
   if (existingEntry) {
-    serverPort = Number(existingEntry[0]);
+    frontendPort = Number(existingEntry[0]);
   } else {
     for (const port of allPorts()) {
       if (!registry.slots[String(port)]) {
-        serverPort = port;
+        frontendPort = port;
         break;
       }
     }
-    if (serverPort === undefined) {
+    if (frontendPort === undefined) {
       console.error("Error: All slots are taken. Free a slot with --free first.");
       process.exit(1);
     }
   }
 }
 
-registry.slots[String(serverPort)] = { worktree: currentWorktree, branch: currentBranch };
+registry.slots[String(frontendPort)] = { worktree: currentWorktree, branch: currentBranch };
 writeSlots(registry);
 
-// ADAPT: Derive additional ports from the server port.
-const adminUiPort = serverPort + 1;
+// ADAPT: Derive additional ports from the frontend port.
+const serverPort = frontendPort + 1;
 
-log(`Using slot ${serverPort} (server: ${serverPort}, admin-ui: ${adminUiPort})`);
+log(`Using slot ${frontendPort} (frontend: ${frontendPort}, server: ${serverPort})`);
 
 // --- Create per-worktree directories ---
 
@@ -247,7 +249,7 @@ function writeConfigFile(relPath, content, label) {
 // .env file — read from .env.example, patch port variables, write .env
 const envExample = readFileSync(join(currentWorktree, ".env.example"), "utf-8");
 const envLines = envExample.trimEnd().split("\n");
-const envVars = { PORT: String(serverPort), ADMIN_UI_PORT: String(adminUiPort) };
+const envVars = { PORT: String(frontendPort), SERVER_PORT: String(serverPort) };
 for (const [key, value] of Object.entries(envVars)) {
   const idx = envLines.findIndex((l) => l.startsWith(`${key}=`));
   if (idx !== -1) {
@@ -298,7 +300,7 @@ try {
 // ADAPT: Print URLs relevant to your project.
 console.log(`
 Worktree setup complete!
-  Slot:     ${serverPort}
-  Server:   http://localhost:${serverPort}/
-  Admin UI: http://localhost:${adminUiPort}/adm/
+  Slot:      ${frontendPort}
+  Frontend:  http://localhost:${frontendPort}/
+  Server:    http://localhost:${serverPort}/
 `);

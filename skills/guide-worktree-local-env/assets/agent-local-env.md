@@ -53,17 +53,19 @@ Be cautious. **NEVER** delete a branch unless the user explicitly requests it.
 
 ## Dev Server
 
-Use `npm run dev:agent`. It runs the dev server in the background with logs redirected to a file, then returns once the server is ready.
+Use `npm run dev:agent`. It starts infrastructure services (if any) and the dev server in the background with logs redirected to a file, then returns once the server is ready.
 
 ```sh
-npm run dev:agent        # Start in background
-npm run dev:agent:stop   # Stop the background server
+npm run dev:agent        # Start infrastructure + dev server in background
+npm run dev:agent:stop   # Stop dev server only (infrastructure keeps running)
 ```
 
 <!-- ADAPT: Document where the log/PID files are stored (e.g., .local-data/).
      Mention any project-specific URLs to open after starting. -->
 
 The script detects port conflicts, so it will refuse to start if a dev server is already running.
+
+**Two-tier shutdown:** `dev:agent:stop` only kills dev server processes — it intentionally leaves infrastructure (Docker containers, databases) running so restarts are fast. Full infrastructure cleanup happens via `setup-worktree --free` when tearing down the worktree entirely.
 
 ### Start the dev server in a specific worktree
 

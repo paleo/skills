@@ -2,7 +2,15 @@
 // Template: dev-agent.mjs — Background dev server management
 //
 // Starts the dev server in the background, polls until ready, and returns.
-// Use --stop to kill the background server.
+// Use --stop to kill the dev server processes.
+//
+// Two-tier shutdown design:
+//   --stop (this script): kills dev servers only, leaves infrastructure running.
+//   --free (setup-worktree): full cleanup — stops Docker, removes volumes, frees slot.
+//
+// ADAPT: If your project uses Docker for databases or other services, add a
+// `docker compose up -d` call at the start of the start() function. This is
+// idempotent and ensures infrastructure is running before the dev server starts.
 //
 // Search for "ADAPT" to find all project-specific sections.
 // =============================================================================
