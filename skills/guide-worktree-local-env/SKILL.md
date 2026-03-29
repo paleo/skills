@@ -6,7 +6,7 @@ compatibility: Requires git. Template scripts are in Node.js but the approach wo
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.2.0"
+  version: "0.2.1"
   repository: https://github.com/paleo/skills
 ---
 
@@ -220,9 +220,9 @@ When you only need a worktree (no slot, no config, no install), use `git worktre
 
 ```json
 {
-  "setup-worktree": "node scripts/setup-worktree.mjs",
-  "dev:agent": "node scripts/dev-agent.mjs",
-  "dev:agent:stop": "node scripts/dev-agent.mjs --stop"
+  "setup-worktree": "node scripts/local-env/setup-worktree.mjs",
+  "dev:agent": "node scripts/local-env/dev-agent.mjs",
+  "dev:agent:stop": "node scripts/local-env/dev-agent.mjs --stop"
 }
 ```
 
