@@ -1,6 +1,8 @@
 // =============================================================================
 // Template: setup-worktree.mjs
 //
+// Worktree lifecycle management: creation, setup, and removal.
+//
 // This template uses a port step of 10, giving each worktree room for multiple
 // ports (e.g., slot 8010 → frontend 8010, server 8011). For single-port
 // projects, simplify: remove PORT_STEP, the modulo check in isValidPort(),
@@ -17,9 +19,10 @@ import {
   readFileSync,
   readdirSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 // ADAPT: Port scheme — adjust base port, step, and range for your project.
@@ -31,6 +34,9 @@ const MAX_PORT = BASE_PORT + 9 * PORT_STEP;
 
 // ADAPT: Path to the slot registry file (stored in a shared/symlinked directory).
 const SLOTS_FILE = ".local/worktree-slots.json";
+
+// ADAPT: Path to the dev-agent PID file (must match dev-agent.mjs).
+const DEV_AGENT_PID_FILE = ".local-data/dev-agent.pid";
 
 function isValidPort(port) {
   return (
@@ -49,41 +55,123 @@ function allPorts() {
   return ports;
 }
 
+function computeWorktreePath(mainWorktree, branch) {
+  const repoName = basename(mainWorktree);
+  const sanitized = branch.replaceAll("/", "-");
+  return join(dirname(mainWorktree), `${repoName}-${sanitized}`);
+}
+
 // --- CLI parsing ---
 
-const { values: args } = parseArgs({
-  options: {
-    slot: { type: "string", short: "s" },
-    free: { type: "boolean" },
-    force: { type: "boolean" },
-    quiet: { type: "boolean", short: "q" },
+const options = {
+  help: { type: "boolean", short: "h", description: "Show this help message" },
+  checkout: {
+    type: "string",
+    arg: "branch",
+    description: "Create a worktree for an existing branch, then set up the local environment",
   },
-  strict: true,
-});
+  create: {
+    type: "string",
+    arg: "branch",
+    description:
+      "Create a new branch + worktree, then set up the local environment. If the branch already exists, appends a numeric suffix (-2, -3, ...)",
+  },
+  self: {
+    type: "boolean",
+    description: "Set up the local environment in the current linked worktree",
+  },
+  remove: {
+    type: "string",
+    arg: "branch",
+    description: "Remove a worktree by branch name (stop dev server, free slot, delete directory)",
+  },
+  "remove-self": {
+    type: "boolean",
+    description:
+      "Remove the current linked worktree (same as --remove, but for the worktree you are in)",
+  },
+  "no-remote-check": {
+    type: "boolean",
+    description:
+      "Skip remote branch verification when removing (use with --remove or --remove-self)",
+  },
+  slot: {
+    type: "string",
+    short: "s",
+    arg: "port",
+    description: "Use a specific slot instead of auto-assigning",
+  },
+  force: {
+    type: "boolean",
+    description: "Overwrite existing config files and re-provision the database",
+  },
+  verbose: { type: "boolean", short: "v", description: "Show intermediate output" },
+};
 
-const quiet = args.quiet ?? false;
+const { values: args } = parseArgs({ options, strict: true });
+
+function printHelp() {
+  console.log("Usage: setup-worktree [options]\n");
+  console.log("Manage worktree lifecycle: creation, local environment setup, and removal.\n");
+  for (const [name, opt] of Object.entries(options)) {
+    const shortFlag = opt.short ? `-${opt.short}, ` : "";
+    const argSuffix = opt.arg ? ` <${opt.arg}>` : "";
+    const flag = `${shortFlag}--${name}${argSuffix}`;
+    console.log(`  ${flag.padEnd(28)} ${opt.description}`);
+  }
+}
+
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+
+const verbose = args.verbose ?? false;
 function log(msg) {
-  if (!quiet) console.log(msg);
+  if (verbose) console.log(msg);
+}
+
+// --- Flag validation ---
+
+const isRemove = args.remove !== undefined || args["remove-self"];
+const isSetup = args.checkout !== undefined || args.create !== undefined || args.self;
+const modeFlags = [args.checkout, args.create, args.self, isRemove].filter(Boolean);
+if (modeFlags.length > 1) {
+  console.error(
+    "Error: --checkout, --create, --self, --remove, and --remove-self are mutually exclusive.",
+  );
+  process.exit(1);
+}
+
+if (args.remove !== undefined && args["remove-self"]) {
+  console.error("Error: --remove and --remove-self are mutually exclusive.");
+  process.exit(1);
+}
+
+if ((args.slot !== undefined || args.force) && !isSetup) {
+  console.error("Error: --slot and --force can only be used with --checkout, --create, or --self.");
+  process.exit(1);
+}
+
+if (args["no-remote-check"] && !isRemove) {
+  console.error("Error: --no-remote-check is only valid with --remove or --remove-self.");
+  process.exit(1);
+}
+
+if (!isSetup && !isRemove) {
+  printHelp();
+  process.exit(0);
 }
 
 // --- Worktree detection ---
 
-const currentWorktree = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+let currentWorktree = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
 
 const gitCommonDir = execSync("git rev-parse --path-format=absolute --git-common-dir", {
   encoding: "utf-8",
 }).trim();
 const mainWorktree = dirname(gitCommonDir);
-const isMainWorktree = resolve(currentWorktree) === resolve(mainWorktree);
-
-if (isMainWorktree && !args.free) {
-  console.error("Error: This script must be run from a worktree, not from the main repository.");
-  process.exit(1);
-}
-
-const currentBranch = isMainWorktree
-  ? ""
-  : execSync("git branch --show-current", { encoding: "utf-8" }).trim();
+let isMainWorktree = resolve(currentWorktree) === resolve(mainWorktree);
 
 // --- Slot registry helpers ---
 
@@ -99,37 +187,236 @@ function writeSlots(registry) {
   writeFileSync(filePath, `${JSON.stringify(registry, undefined, 2)}\n`);
 }
 
-// --- Handle --free ---
+// --- Branch existence helper ---
 
-if (args.free) {
+function branchExists(branch) {
+  try {
+    execSync(`git rev-parse --verify ${branch}`, { stdio: "pipe" });
+    return true;
+  } catch {
+    try {
+      execSync(`git rev-parse --verify origin/${branch}`, { stdio: "pipe" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+// --- Dev server stop helper ---
+
+function stopDevServer(worktreePath) {
+  const pidFile = join(worktreePath, DEV_AGENT_PID_FILE);
+  if (!existsSync(pidFile)) return;
+
+  const raw = readFileSync(pidFile, "utf-8").trim();
+  const pid = Number(raw);
+  if (!Number.isInteger(pid) || pid <= 0) return;
+
+  try {
+    process.kill(pid, 0); // check if alive
+  } catch {
+    unlinkSync(pidFile);
+    return;
+  }
+
+  log(`Stopping dev server (PID ${pid})...`);
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // already dead
+    }
+  }
+
+  const deadline = Date.now() + 5_000;
+  let stillAlive = true;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(-pid, 0);
+    } catch {
+      stillAlive = false;
+      break;
+    }
+    execSync("sleep 0.3", { stdio: "pipe" });
+  }
+
+  if (stillAlive) {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // already dead
+    }
+  }
+
+  if (existsSync(pidFile)) unlinkSync(pidFile);
+}
+
+// --- Worktree guard ---
+
+if (args.checkout || args.create) {
+  if (!isMainWorktree) {
+    console.error("Error: --checkout and --create must be run from the main worktree.");
+    process.exit(1);
+  }
+} else if (args.self) {
+  if (isMainWorktree) {
+    console.error("Error: --self must be run from a linked worktree, not from the main worktree.");
+    process.exit(1);
+  }
+} else if (isRemove) {
+  // --remove can be run from anywhere except the worktree being removed
+  // --remove-self must not be run from the main worktree (validated below)
+}
+
+// --- Early slot validation (before creating branch/worktree) ---
+
+if ((args.checkout || args.create || args.self) && args.slot !== undefined) {
+  const earlyPort = Number(args.slot);
+  if (!isValidPort(earlyPort)) {
+    console.error(`Error: Slot must be a valid port: ${allPorts().join(", ")}.`);
+    process.exit(1);
+  }
+  const earlyRegistry = readSlots();
+  const existing = earlyRegistry.slots[String(earlyPort)];
+  if (existing && resolve(existing.worktree) !== resolve(currentWorktree)) {
+    console.error(
+      `Error: Slot ${earlyPort} is already taken by ${existing.worktree} (branch: ${existing.branch}).`,
+    );
+    process.exit(1);
+  }
+}
+
+// --- Handle --checkout ---
+
+if (args.checkout) {
+  const branch = args.checkout;
+  const stdio = verbose ? "inherit" : "pipe";
+
+  if (!branchExists(branch)) {
+    console.error(`Error: Branch "${branch}" does not exist locally or on the remote.`);
+    process.exit(1);
+  }
+
+  const worktreePath = computeWorktreePath(mainWorktree, branch);
+  execSync(`git worktree add ${worktreePath} ${branch}`, { stdio });
+
+  currentWorktree = worktreePath;
+  isMainWorktree = false;
+}
+
+// --- Handle --create ---
+
+if (args.create) {
+  const requestedBranch = args.create;
+  const stdio = verbose ? "inherit" : "pipe";
+
+  let finalBranch = requestedBranch;
+  if (branchExists(finalBranch)) {
+    let suffix = 2;
+    while (branchExists(`${requestedBranch}-${suffix}`)) {
+      suffix++;
+    }
+    finalBranch = `${requestedBranch}-${suffix}`;
+  }
+
+  const worktreePath = computeWorktreePath(mainWorktree, finalBranch);
+  execSync(`git worktree add -b ${finalBranch} ${worktreePath}`, { stdio });
+
+  console.log(`Branch: ${finalBranch}`);
+
+  currentWorktree = worktreePath;
+  isMainWorktree = false;
+}
+
+// --- Handle --remove / --remove-self ---
+
+if (isRemove) {
+  const removeSelf = Boolean(args["remove-self"]);
   const registry = readSlots();
+  let branch;
+  let slotPort;
+  let worktreePath;
 
-  let freedPort;
-  if (args.slot !== undefined) {
-    freedPort = args.slot;
-    if (!registry.slots[freedPort]) {
-      console.error(`Error: Port ${freedPort} is not assigned.`);
+  if (removeSelf) {
+    if (isMainWorktree) {
+      console.error("Error: Cannot remove the main worktree.");
       process.exit(1);
     }
-  } else {
     const resolvedCurrent = resolve(currentWorktree);
     const entry = Object.entries(registry.slots).find(
       ([, v]) => resolve(v.worktree) === resolvedCurrent,
     );
     if (!entry) {
-      console.error("Error: No slot found for this worktree. Use --slot PORT to specify one.");
+      console.error("Error: No slot found for this worktree in the registry.");
       process.exit(1);
     }
-    [freedPort] = entry;
+    [slotPort] = entry;
+    branch = entry[1].branch;
+    worktreePath = currentWorktree;
+  } else {
+    branch = args.remove;
+    const entry = Object.entries(registry.slots).find(([, v]) => v.branch === branch);
+    if (!entry) {
+      console.error(`Error: No worktree found for branch "${branch}" in the slot registry.`);
+      process.exit(1);
+    }
+    [slotPort] = entry;
+    worktreePath = entry[1].worktree;
+
+    if (resolve(currentWorktree) === resolve(worktreePath)) {
+      console.error("Error: You are currently in this worktree. Use --remove-self instead.");
+      process.exit(1);
+    }
   }
 
-  
+  // Remote check
+  if (!args["no-remote-check"]) {
+    execSync("git fetch", { stdio: verbose ? "inherit" : "pipe" });
+    const remoteBranches = execSync(`git branch -r --list "origin/${branch}"`, {
+      encoding: "utf-8",
+    }).trim();
+    if (remoteBranches.length > 0) {
+      console.error(
+        `Error: Branch "${branch}" still exists on the remote. Use --no-remote-check to skip this verification.`,
+      );
+      process.exit(1);
+    }
+  }
 
-  delete registry.slots[freedPort];
+  if (!existsSync(worktreePath)) {
+    console.warn(`Warning: Worktree directory ${worktreePath} not found. Cleaning up registry only.`);
+    delete registry.slots[slotPort];
+    writeSlots(registry);
+    console.log(`Removed registry entry for branch "${branch}" (slot ${slotPort}).`);
+    process.exit(0);
+  }
+
+  stopDevServer(worktreePath);
+
+  delete registry.slots[slotPort];
   writeSlots(registry);
-  console.log(`Freed slot ${freedPort}.`);
+
+  if (removeSelf) {
+    process.chdir(mainWorktree);
+  }
+
+  execSync(`git worktree remove --force ${worktreePath}`, {
+    stdio: verbose ? "inherit" : "pipe",
+  });
+
+  console.log(`Removed worktree for branch "${branch}" (slot ${slotPort}).`);
+  if (removeSelf) {
+    console.log(`Now run: cd ${mainWorktree}`);
+  }
   process.exit(0);
 }
+
+// --- Get current branch ---
+
+const currentBranch = execSync("git branch --show-current", { encoding: "utf-8", cwd: currentWorktree }).trim();
 
 // --- Resolve slot ---
 
@@ -164,7 +451,7 @@ if (args.slot !== undefined) {
       }
     }
     if (frontendPort === undefined) {
-      console.error("Error: All slots are taken. Free a slot with --free first.");
+      console.error("Error: All slots are taken. Remove a worktree with --remove first.");
       process.exit(1);
     }
   }
@@ -275,13 +562,13 @@ if (existsSync(vscodeSrc)) {
 // --- Install dependencies & build ---
 
 // ADAPT: Replace with your project's install and build commands.
-const npmStdio = quiet ? "pipe" : "inherit";
+const npmStdio = verbose ? "inherit" : "pipe";
 
 log("\nRunning npm install...");
 try {
   execSync("npm install", { stdio: npmStdio, cwd: currentWorktree });
 } catch (err) {
-  if (quiet) process.stderr.write(err.stderr ?? err.stdout ?? "");
+  if (!verbose) process.stderr.write(err.stderr ?? err.stdout ?? "");
   console.error("Error: npm install failed.");
   process.exit(1);
 }
@@ -290,7 +577,7 @@ log("\nRunning npm run build...");
 try {
   execSync("npm run build", { stdio: npmStdio, cwd: currentWorktree });
 } catch (err) {
-  if (quiet) process.stderr.write(err.stderr ?? err.stdout ?? "");
+  if (!verbose) process.stderr.write(err.stderr ?? err.stdout ?? "");
   console.error("Error: npm run build failed.");
   process.exit(1);
 }

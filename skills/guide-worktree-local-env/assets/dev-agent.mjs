@@ -6,7 +6,7 @@
 //
 // Two-tier shutdown design:
 //   --stop (this script): kills dev servers only, leaves infrastructure running.
-//   --free (setup-worktree): full cleanup — stops Docker, removes volumes, frees slot.
+//   --remove (setup-worktree): full cleanup — stops dev server, Docker, removes volumes, frees slot, removes worktree.
 //
 // ADAPT: If your project uses Docker for databases or other services, add a
 // `docker compose up -d` call at the start of the start() function. This is

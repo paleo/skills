@@ -8,52 +8,44 @@ read_when:
 
 # Local Environment Management for Agents
 
-## Worktree / Local Environment Setup
+## Setting Up a Local Environment
 
-When the user asks to "set up a new worktree":
-
-### Find or create a branch
-
-The user must be clear if they want you to create a new branch or reuse an existing one. If it's unclear, ask for clarification.
-
-If you have to create a new branch: we don't want to overwrite an existing branch. Check the list of existing branches before creating a new one. If a branch with the same name already exists locally, append a numeric suffix starting at 2 (e.g., `fix/123-2`).
-
-### Worktree directory
-
-Create the worktree, and run the setup script:
+When the user asks to "set up a new local environment" or "set up a new worktree":
 
 ```sh
-git worktree add ../REPONAME-fix-123 fix/123
-cd ../REPONAME-fix-123
-npm run setup-worktree -- --quiet
+npm run setup-worktree -- --checkout fix/123  # existing branch
+npm run setup-worktree -- --create fix/123    # new branch (dedup: appends -2, -3… if taken)
+npm run setup-worktree -- --self              # manual worktree (created with git worktree add)
 ```
 
-<!-- ADAPT: Replace REPONAME with your repository name. Update the setup
-     command if your project uses a different task runner. Document any
-     project-specific ports or URLs the developer should know about. -->
+<!-- ADAPT: Update the setup command if your project uses a different task runner.
+     Document any project-specific ports or URLs the developer should know about. -->
 
-The setup script handles dependency installation, build, config generation, and database provisioning.
+The script creates the worktree in the correct sibling directory, assigns a port slot, installs dependencies, builds, generates config files, and provisions the database.
 
-### Removing a worktree
+### Removing a Local Environment
 
-When the user asks to "delete the worktree" for a branch (e.g., `fix/123`):
+```sh
+npm run setup-worktree -- --remove fix/123    # remove by branch name
+npm run setup-worktree -- --remove-self       # remove the current worktree
+npm run setup-worktree -- --remove fix/123 --no-remote-check # skip remote branch check
+```
 
-1. Locate the worktree directory using `git worktree list` and find the entry matching the branch name. If there are multiple matches (e.g., `fix/123`, `fix/123-2`), **ask the user** to select which one to delete. **DO NOT PROCEED** if there is ambiguity.
-2. Verify the branch has been removed from the remote (`git fetch && git branch -r` should NOT list it). If it still exists on the remote, **warn the user** and do NOT proceed unless they explicitly confirm.
-3. Free the worktree slot and remove the worktree:
+Stops the dev server (if running), frees the slot, and removes the worktree.
 
-   ```sh
-   cd <worktree-directory>
-   npm run setup-worktree -- --free
-   cd -
-   git worktree remove <worktree-directory>
-   ```
+By default, it verifies the branch has been removed from the remote first. Use `--no-remote-check` to skip that. With `--remove-self`, the script prints the main worktree path. You'll have to run `cd <main-worktree>` afterward.
 
-Be cautious. **NEVER** delete a branch unless the user explicitly requests it.
+**NEVER** delete a branch unless the user explicitly requests it.
+
+### Creating a Worktree Without Setup
+
+When the user only wants a worktree (no ports, no build, no config), use `git worktree` CLI directly.
+
+<!-- ADAPT: Replace REPONAME with your repository name in the example if you add one. -->
 
 ## Dev Server
 
-Use `npm run dev:agent`. It starts infrastructure services (if any) and the dev server in the background with logs redirected to a file, then returns once the server is ready.
+`npm run dev:agent` starts infrastructure services (if any) and the dev server in the background with logs redirected to a file, and returns once the server is ready.
 
 ```sh
 npm run dev:agent        # Start infrastructure + dev server in background
@@ -63,16 +55,18 @@ npm run dev:agent:stop   # Stop dev server only (infrastructure keeps running)
 <!-- ADAPT: Document where the log/PID files are stored (e.g., .local-data/).
      Mention any project-specific URLs to open after starting. -->
 
-The script detects port conflicts, so it will refuse to start if a dev server is already running.
+The script detects port conflicts: it will refuse to start if a dev server is already running.
 
-**Two-tier shutdown:** `dev:agent:stop` only kills dev server processes — it intentionally leaves infrastructure (Docker containers, databases) running so restarts are fast. Full infrastructure cleanup happens via `setup-worktree --free` when tearing down the worktree entirely.
+**Two-tier shutdown:** `dev:agent:stop` only kills dev server processes — it intentionally leaves infrastructure (Docker containers, databases) running so restarts are fast. Full infrastructure cleanup happens via `setup-worktree --remove` when tearing down the worktree entirely.
 
 ### Start the dev server in a specific worktree
 
-1. Find the worktree directory: `git worktree list`
-2. Run `npm run dev:agent` from the worktree directory
-3. Read the log file (path printed on start) to confirm the server started and find the URLs
-4. When done, run `npm run dev:agent:stop` from the same directory
+```sh
+git worktree list                       # 1. find the worktree directory
+cd <worktree-dir> && npm run dev:agent  # 2. start the dev server
+# 3. read the log file (path printed on start) to confirm startup and find URLs
+npm run dev:agent:stop                  # 4. stop when done (same directory)
+```
 
 ## Directory Layout
 

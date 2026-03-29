@@ -6,7 +6,7 @@ compatibility: Requires git. Template scripts are in Node.js but the approach wo
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.1.1"
+  version: "0.2.0"
   repository: https://github.com/paleo/skills
 ---
 
@@ -82,37 +82,54 @@ Instead, the repo contains checked-in _example_ config files (e.g., `config.exam
 
 ## The Two Scripts
 
-### 1. `setup-worktree` — One-time worktree initialization
+### 1. `setup-worktree` — Worktree lifecycle management
 
-This is the central piece. It takes a fresh git worktree directory and makes it a fully functional development environment. You run it once after creating the worktree.
+This is the central piece. It handles the full worktree lifecycle: creation, setup, and removal. It can create a worktree for an existing branch, create a new branch with automatic deduplication, set up the local environment, and tear everything down.
 
 See [assets/setup-worktree.mjs](assets/setup-worktree.mjs) for a template implementation.
 
-**What it does, in order:**
+**What it does for setup (with `--checkout` or `--create`):**
 
-1. **Detects worktrees.** Finds the main worktree path via `git rev-parse --git-common-dir` (the parent of `.git`). Refuses to run from the main worktree (the main environment is set up manually or by the initial project setup).
-2. **Assigns a slot.** Auto-assigns the first available port, or accepts `--slot PORT` for a specific one. Writes the assignment to the slot registry in the main worktree's shared directory.
-3. **Creates per-worktree directories.**
-4. **Symlinks shared directories** to the main worktree using relative paths.
-5. **Provisions the database.** The goal is that the worktree ends up with a working database. How depends on the project (see "Database provisioning" below).
-6. **Generates config files** from example templates with ports patched in.
-7. **Installs dependencies and builds** (or whatever your project needs for a cold start).
-8. **Prints a summary** with the assigned slot and URLs.
+1. **Creates the worktree.** Computes the worktree path automatically (`../<reponame>-<sanitized-branch>`) to prevent misplacement. With `--create`, handles branch name deduplication (appends `-2`, `-3`, etc. if the branch already exists).
+2. **Detects worktrees.** Finds the main worktree path via `git rev-parse --git-common-dir` (the parent of `.git`).
+3. **Assigns a slot.** Auto-assigns the first available port, or accepts `--slot PORT` for a specific one. Writes the assignment to the slot registry in the main worktree's shared directory.
+4. **Creates per-worktree directories.**
+5. **Symlinks shared directories** to the main worktree using relative paths.
+6. **Provisions the database.** The goal is that the worktree ends up with a working database. How depends on the project (see "Database provisioning" below).
+7. **Generates config files** from example templates with ports patched in.
+8. **Installs dependencies and builds** (or whatever your project needs for a cold start).
+9. **Prints a summary** with the assigned slot, branch name, and URLs.
+
+**What it does for removal (with `--remove`):**
+
+1. **Looks up the branch** in the slot registry to find the worktree path and slot.
+2. **Checks the remote** (unless `--no-remote-check`): verifies the branch has been removed from the remote before proceeding.
+3. **Stops the dev server** if running (reads the PID file, kills the process group).
+4. **Frees the slot** from the registry.
+5. **Removes the worktree** directory via `git worktree remove --force` (force is needed because per-worktree directories contain untracked files).
 
 **CLI flags:**
 
-| Flag          | Purpose                                                       |
-| ------------- | ------------------------------------------------------------- |
-| `--slot PORT` | Use a specific slot instead of auto-assigning                 |
-| `--force`     | Overwrite existing config files and re-provision the database |
-| `--quiet`     | Suppress intermediate output (useful when called by agents)   |
-| `--free`      | Full cleanup: stop infrastructure, remove containers/volumes, release the slot |
+| Flag | Purpose |
+| --- | --- |
+| `--checkout BRANCH` | Create a worktree for an existing branch, then set up the local environment |
+| `--create BRANCH` | Create a new branch (with suffix dedup) + worktree, then set up the local environment |
+| `--self` | Set up the local environment in the current linked worktree |
+| `--remove BRANCH` | Stop dev server + free slot + remove worktree by branch name |
+| `--remove-self` | Remove the current linked worktree (same as `--remove`, but for the worktree you are in) |
+| `--no-remote-check` | Skip remote branch verification when removing (use with `--remove` or `--remove-self`) |
+| `--slot PORT` | Use a specific slot instead of auto-assigning |
+| `--force` | Overwrite existing config files and re-provision the database |
+| `--verbose` | Show intermediate output |
+
+Running the script with no mode flag shows help.
 
 **What to adapt:**
 
 - **Config files**: Identify which files need port patching. It could be an `.env`, a `config.json`, a `docker-compose.override.yml`, or several of these.
 - **Per-worktree directories**: Choose what your project needs (database files, caches, logs, Docker volumes...).
 - **Build step**: `npm install && npm run build`, `pip install`, `cargo build`, `docker compose build`, etc.
+- **Dev server PID file path**: Must match the path used by the `dev-agent` script so `--remove` can stop the server.
 
 ### Database provisioning
 
@@ -152,7 +169,7 @@ See [assets/dev-agent.mjs](assets/dev-agent.mjs) for a template implementation.
 The `dev-agent` script intentionally only manages dev server processes, not infrastructure services. This creates a clean separation:
 
 - **`--stop` (dev-agent)**: Kills dev server processes only. Leaves infrastructure (Docker containers, databases) running. This is the common case — the developer pauses work but may come back soon. Restarting dev servers is fast; restarting database containers is not.
-- **`--free` (setup-worktree)**: Full cleanup — stops infrastructure services, removes containers/volumes, and releases the slot. This is for when the worktree is being torn down entirely.
+- **`--remove` (setup-worktree)**: Full cleanup — stops the dev server, stops infrastructure services, removes containers/volumes, releases the slot, and removes the worktree directory. This is for when the worktree is being torn down entirely.
 
 This separation matters because infrastructure services (databases, caches) are expensive to restart: they need to initialize, and the dev server may need to run migrations or wait for readiness. Dev servers, by contrast, start in seconds. Coupling their lifecycles wastes time on every stop/start cycle.
 
@@ -165,44 +182,39 @@ This separation matters because infrastructure services (databases, caches) are 
 
 ## Workflow
 
-### Setting up a new worktree
+### Setting up a new local environment
 
 ```sh
-# 1. Create the worktree
-git worktree add ../myproject-feat-42 feat/42
+npm run setup-worktree -- --checkout feat/42     # existing branch
+npm run setup-worktree -- --create feat/42       # new branch (dedup: appends -2, -3… if taken)
+npm run setup-worktree -- --self                 # manual worktree (created with git worktree add)
 
-# 2. Run the setup script
-cd ../myproject-feat-42
-npm run setup-worktree -- --quiet
-
-# 3. Start developing
+# Start developing
 npm run dev
 # Or, for agents:
 npm run dev:agent
 ```
 
+### Removing a local environment
+
+```sh
+npm run setup-worktree -- --remove feat/42       # remove by branch name
+npm run setup-worktree -- --remove-self          # remove the current worktree
+npm run setup-worktree -- --remove feat/42 --no-remote-check # skip remote branch check
+```
+
+`--remove-self` prints the main worktree path. The parent shell's CWD will point to a deleted directory — run `cd <main-worktree>` afterward.
+
 ### Stopping dev servers (keeping infrastructure)
 
 ```sh
-# Stop dev servers only — Docker containers keep running
-npm run dev:agent:stop
-# Later, restart quickly:
-npm run dev:agent
+npm run dev:agent:stop   # Stop dev servers only — Docker containers keep running
+npm run dev:agent        # Later, restart quickly
 ```
 
-### Tearing down a worktree
+### Creating a worktree without setup
 
-```sh
-# 1. Stop the dev server if running
-npm run dev:agent:stop
-
-# 2. Full cleanup: stop infrastructure, remove containers/volumes, release slot
-npm run setup-worktree -- --free
-
-# 3. Go back and remove the worktree
-cd ../myproject
-git worktree remove ../myproject-feat-42
-```
+When you only need a worktree (no slot, no config, no install), use `git worktree` CLI directly.
 
 ### npm scripts to add
 
@@ -227,6 +239,9 @@ The setup logic (JSON parsing, file manipulation, slot allocation) is more maint
 
 **Why detect the main worktree via `git rev-parse --git-common-dir`?**
 This works reliably regardless of where worktrees are physically located. The common dir always points to `<main-worktree>/.git`, so its parent is the main worktree.
+
+**Why does the script handle worktree creation instead of relying on manual `git worktree add`?**
+Centralizing worktree path computation prevents a common mistake: creating the worktree as a child directory of the main worktree instead of a sibling. The script derives the path automatically from the branch name and the main worktree directory name.
 
 ## Agent Instructions
 
@@ -258,8 +273,8 @@ This is the file referenced above. It contains the step-by-step procedures: how 
 
 The agents need to know:
 
-1. The exact commands to run (and in what order)
-2. What guardrails to respect (don't overwrite branches, verify remote branch deletion before cleanup)
+1. The exact commands to run (the script handles worktree creation, setup, and removal)
+2. What guardrails to respect (never delete a branch unless explicitly requested)
 3. Where logs and config files live
 
 ## Checklist for Adapting to a New Repository
