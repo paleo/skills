@@ -483,14 +483,15 @@ for (const dir of localDataDirs) {
 // ADAPT: List the gitignored directories that should be shared across worktrees.
 for (const dirName of [".local", ".plans"]) {
   const link = join(currentWorktree, dirName);
-  if (!existsSync(link)) {
-    const mainDir = join(mainWorktree, dirName);
-    mkdirSync(mainDir, { recursive: true });
+  const mainDir = join(mainWorktree, dirName);
+  if (!existsSync(mainDir)) {
+    log(`Skipped ${dirName} symlink (not present in main worktree).`);
+  } else if (existsSync(link)) {
+    log(`Skipped ${dirName} symlink (already exists).`);
+  } else {
     const relTarget = relative(currentWorktree, mainDir);
     symlinkSync(relTarget, link);
     log(`Created ${dirName} symlink → main worktree.`);
-  } else {
-    log(`Skipped ${dirName} symlink (already exists).`);
   }
 }
 
