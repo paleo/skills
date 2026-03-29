@@ -57,7 +57,7 @@ Each worktree gets a unique "slot" that determines its port(s). A central **slot
 
 - A project with a frontend port and a server port could use slots 8110–8190 (step of 10), assigning e.g. frontend=8110, server=8111.
 - A project with frontend, server, and database ports could also use a step of 10, assigning e.g. frontend=8110, server=8111, db=8112.
-- A project with only a single port could simplify to a step of 1 (e.g. slots 8101–8109). In that case, remove the `PORT_STEP` constant, the modulo check in `isValidPort()`, and the secondary port derivation (`adminUiPort`) from the template script.
+- A project with only a single port could simplify to a step of 1 (e.g. slots 8101–8109). In that case, remove the `PORT_STEP` constant, the modulo check in `isValidPort()`, and any secondary port derivation from the template script.
 
 The slot is identified by the primary port number itself (e.g., `--slot 8120`).
 
