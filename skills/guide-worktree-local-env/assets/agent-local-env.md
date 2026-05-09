@@ -45,27 +45,29 @@ When the user only wants a worktree (no ports, no build, no config), use `git wo
 
 ## Dev Server
 
-`npm run dev:agent` starts infrastructure services (if any) and the dev server in the background with logs redirected to a file, and returns once the server is ready.
+`npm run dev:up` starts the dev server in the background with logs redirected to a file, and returns once the server is ready.
 
 ```sh
-npm run dev:agent        # Start infrastructure + dev server in background
-npm run dev:agent:stop   # Stop dev server only (infrastructure keeps running)
+npm run dev:up    # Start in background
+npm run dev:down  # Stop the background server
 ```
 
 <!-- ADAPT: Document where the log/PID files are stored (e.g., .local-data/).
      Mention any project-specific URLs to open after starting. -->
 
+Logs and PID files are stored in `.local-data/logs/` and `.local-data/` (per-worktree).
+
 The script detects port conflicts: it will refuse to start if a dev server is already running.
 
-**Two-tier shutdown:** `dev:agent:stop` only kills dev server processes — it intentionally leaves infrastructure (Docker containers, databases) running so restarts are fast. Full infrastructure cleanup happens via `setup-worktree --remove` when tearing down the worktree entirely.
+**Two-tier shutdown:** `dev:down` only kills dev server processes — it intentionally leaves infrastructure (Docker containers, databases) running so restarts are fast. Full infrastructure cleanup happens via `setup-worktree --remove` when tearing down the worktree entirely.
 
 ### Start the dev server in a specific worktree
 
 ```sh
-git worktree list                       # 1. find the worktree directory
-cd <worktree-dir> && npm run dev:agent  # 2. start the dev server
+git worktree list                    # 1. find the worktree directory
+cd <worktree-dir> && npm run dev:up  # 2. start the dev server
 # 3. read the log file (path printed on start) to confirm startup and find URLs
-npm run dev:agent:stop                  # 4. stop when done (same directory)
+npm run dev:down                     # 4. stop when done (same directory)
 ```
 
 ## Directory Layout
@@ -73,4 +75,4 @@ npm run dev:agent:stop                  # 4. stop when done (same directory)
 <!-- ADAPT: List your shared and per-worktree directories. -->
 
 - **`.local/`** — Shared across worktrees (symlinked). Lightweight files: personal notes, `worktree-slots.json`.
-- **`.local-data/`** — Per-worktree. Runtime data: databases, caches, logs.
+- **`.local-data/`** — Per-worktree. Runtime data: databases, caches, PID files, `logs/` (dev server logs).

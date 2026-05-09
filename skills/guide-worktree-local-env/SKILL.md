@@ -6,7 +6,7 @@ compatibility: Requires git. Template scripts are in Node.js but the approach wo
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.2.1"
+  version: "0.3.0"
   repository: https://github.com/paleo/skills
 ---
 
@@ -14,7 +14,9 @@ metadata:
 
 This skill helps you implement a system for running multiple local development environments simultaneously using git worktrees. It is meant to be adapted to any repository, regardless of tech stack or database engine.
 
-The `assets/` directory contains template scripts ([setup-worktree.mjs](assets/setup-worktree.mjs), [dev-agent.mjs](assets/dev-agent.mjs)) and a template for [agent documentation](assets/agent-local-env.md). The scripts are annotated with `ADAPT` comments to highlight what needs changing.
+The `assets/` directory contains template scripts ([setup-worktree.mjs](assets/setup-worktree.mjs), [dev-server.mjs](assets/dev-server.mjs)) and a template for [agent documentation](assets/agent-local-env.md). The scripts are annotated with `ADAPT` comments to highlight what needs changing.
+
+These `.mjs` files are templates, not finished scripts. Once you've adapted them to your project, strip out everything you don't use: `ADAPT` / `ALTERNATIVE` comments, the inline examples (e.g. the `extractHost` URL-patching example, the SQLite-alternative block), unused branches, and any defaults you replaced. The committed script should read like a normal first-class part of your codebase, with no template scaffolding left behind.
 
 ## The Problem
 
@@ -78,7 +80,14 @@ The main worktree's port is implicit and never stored in the registry.
 
 The actual config files that contain ports (`.env`, `config.json`, `docker-compose.override.yml`, etc.) **must be gitignored**. This is essential: since all worktrees share the same git history, a tracked config file would be the same everywhere, defeating the purpose of per-worktree port assignment.
 
-Instead, the repo contains checked-in _example_ config files (e.g., `config.example.json`, `.env.example`). The setup script reads these templates, patches in the assigned port(s), and writes the actual config files. This way, the template stays in version control, each worktree gets its own config with unique ports, and the script always produces a valid config.
+The repo contains checked-in _example_ config files (e.g., `.env.example`, `config.example.json`). The setup uses a **two-stage flow**:
+
+1. **Once per repo**, the developer manually creates the main worktree's actual config from the `.example` file (`cp .env.example .env`) and customizes it as needed (e.g., a remote dev-server IP for `API_URL`, secrets, feature flags).
+2. **For every sibling worktree**, the setup script copies the main worktree's actual config and patches in the slot's ports. This propagates the developer's customizations automatically.
+
+This means dev-time customizations (a public dev IP, alternate hosts, etc.) flow into new worktrees "for free". The `extractHost` helper preserves non-localhost hosts when patching URL-style env values, so a `API_URL=http://1.2.3.4:8001` becomes `http://1.2.3.4:<newPort>` rather than collapsing to `localhost`.
+
+Trade-off: mistakes in the main worktree's config also propagate. Keep it clean.
 
 ## The Two Scripts
 
@@ -126,10 +135,10 @@ Running the script with no mode flag shows help.
 
 **What to adapt:**
 
-- **Config files**: Identify which files need port patching. It could be an `.env`, a `config.json`, a `docker-compose.override.yml`, or several of these.
+- **Config files**: List `copyAndPatchFile` invocations — one per gitignored config file your project needs. The source is the same path in the main worktree; the patch function inserts the slot's ports (and preserves hosts via `extractHost` for URL-style values).
+- **`DEV_SERVER_PID_FILES`**: One entry per PID file your `dev-server` writes. Used by `--remove` to stop the dev server cleanly.
 - **Per-worktree directories**: Choose what your project needs (database files, caches, logs, Docker volumes...).
 - **Build step**: `npm install && npm run build`, `pip install`, `cargo build`, `docker compose build`, etc.
-- **Dev server PID file path**: Must match the path used by the `dev-agent` script so `--remove` can stop the server.
 
 ### Database provisioning
 
@@ -137,11 +146,11 @@ Each worktree needs its own database instance. The setup script must produce a w
 
 **File-based databases (SQLite, etc.):** If your database is stored as files on disk, the setup script can simply copy the data directory from the main worktree. This gives the new worktree a clone of the current data. This is the simplest case.
 
-**Docker-managed databases (PostgreSQL, MySQL, etc.):** The typical approach would be:
+**Docker-managed databases (PostgreSQL, MySQL, etc.):** The template ships an example flow:
 
-1. Generate a `docker-compose.override.yml` (or `.env`) with slot-derived ports, so each worktree's database container listens on a unique port.
-2. Start the container (`docker compose up -d`).
-3. Create a fresh database (or the container creates one on first start).
+1. Copy `docker-compose.yml` from the main worktree into the new worktree, patching the host port (e.g. `5432`) to the slot's DB port and rewriting `container_name` to include the slot (e.g. `myrepo-database-slot-8110`) so containers don't collide.
+2. Start the container with `docker compose up -d`.
+3. Wait for the DB to be ready by polling `docker compose exec database pg_isready` with a 30-second deadline.
 4. Run migrations to set up the schema.
 5. Run a seed script to populate initial data.
 
@@ -149,36 +158,40 @@ The slot port can also serve as the basis for naming: e.g., database `myapp_dev_
 
 **The principle is the same regardless of tech:** the setup script must end with a worktree that has a functional database, ready for development. What "functional" means and how to get there is project-specific.
 
-### 2. `dev-agent` — Background dev server management
+### 2. `dev-server` — Background dev server management
 
 This script starts the dev server in the background, waits for it to be ready, and returns. It's designed for AI agents that need to start a dev server, do their work, and stop it — without an interactive terminal.
 
-See [assets/dev-agent.mjs](assets/dev-agent.mjs) for a template implementation.
+A "dev server" can be a single process or several cooperating processes (e.g. an API watcher plus a frontend bundler). The script handles either case via a `SERVERS` array — one entry per process — but conceptually they form one dev server.
+
+See [assets/dev-server.mjs](assets/dev-server.mjs) for a template implementation.
 
 **What it does:**
 
-1. Reads the server port from the config file (which was generated by the setup script).
-2. Checks if the port is already in use.
-3. Optionally starts infrastructure services (e.g., `docker compose up -d`) before the dev server.
-4. Spawns the dev command as a detached process group, redirecting stdout/stderr to a log file.
-5. Polls the log file for a success marker string (e.g., `"Server is ready on port"`).
-6. Writes the PID to a file.
+1. Reads each server's port from its config file (the busy-port check) and verifies no port is already in use.
+2. Aborts if a sibling `dev-server` is already running (PID file + alive check).
+3. Optionally starts infrastructure services in `ensureInfrastructure()` (e.g., `docker compose up -d`) before any dev server. By default this is a no-op.
+4. Iterates over the `SERVERS` array, spawning each process as a detached process group with stdout/stderr redirected to a per-process log file and the PID written to a per-process PID file.
+5. Polls each log file in parallel for a success marker. Fails fast on any configured fatal `errorMarkers` substring (e.g. `"[ExceptionHandler]"`, Node's `"Node.js v"` exit footer) or if the process dies, instead of waiting for the timeout.
+6. On any startup failure, prints the last lines of the failing log, stops every spawned sibling process, and exits non-zero.
+7. On success, prints a summary listing each process's URL, PID, and log path.
+
+A single-process dev server uses a `SERVERS` array with one entry; the script's structure stays the same.
 
 **Two-tier shutdown:**
 
-The `dev-agent` script intentionally only manages dev server processes, not infrastructure services. This creates a clean separation:
+The `dev-server` script intentionally only manages dev server processes, not infrastructure services. This creates a clean separation:
 
-- **`--stop` (dev-agent)**: Kills dev server processes only. Leaves infrastructure (Docker containers, databases) running. This is the common case — the developer pauses work but may come back soon. Restarting dev servers is fast; restarting database containers is not.
+- **`--stop` (dev-server)**: Kills the dev server processes only. Leaves infrastructure (Docker containers, databases) running. This is the common case — the developer pauses work but may come back soon. Restarting the dev server is fast; restarting database containers is not.
 - **`--remove` (setup-worktree)**: Full cleanup — stops the dev server, stops infrastructure services, removes containers/volumes, releases the slot, and removes the worktree directory. This is for when the worktree is being torn down entirely.
 
-This separation matters because infrastructure services (databases, caches) are expensive to restart: they need to initialize, and the dev server may need to run migrations or wait for readiness. Dev servers, by contrast, start in seconds. Coupling their lifecycles wastes time on every stop/start cycle.
+This separation matters because infrastructure services (databases, caches) are expensive to restart: they need to initialize, and the dev server may need to run migrations or wait for readiness. The dev server, by contrast, starts in seconds. Coupling their lifecycles wastes time on every stop/start cycle.
 
 **What to adapt:**
 
-- **Config path**: Point to wherever your config file lives.
-- **Success marker**: Change to whatever your dev server prints when it's ready (e.g., `"Listening on"`, `"Server started"`, `"ready in"`).
-- **Start command**: Change to whatever starts your dev server.
-- **Infrastructure startup**: If your project uses Docker Compose for databases or other services, add a `docker compose up -d` call at the beginning of the start function (before spawning the dev server). This is idempotent — it no-ops if containers are already running.
+- **`SERVERS` entries**: One per dev server process. Each entry sets the spawn command, success marker, fatal `errorMarkers`, PID/log paths, and the env file + variable to read the port from.
+- **Fatal markers**: Pick log substrings that mean "unrecoverable" for your stack (or leave the array empty). Failing fast on these saves the full timeout.
+- **`ensureInfrastructure()`**: Uncomment / extend the `docker compose up -d` call if your project has Docker-managed infrastructure that must run before the dev server.
 
 ## Workflow
 
@@ -192,7 +205,7 @@ npm run setup-worktree -- --self                 # manual worktree (created with
 # Start developing
 npm run dev
 # Or, for agents:
-npm run dev:agent
+npm run dev:up
 ```
 
 ### Removing a local environment
@@ -205,11 +218,11 @@ npm run setup-worktree -- --remove feat/42 --no-remote-check # skip remote branc
 
 `--remove-self` prints the main worktree path. The parent shell's CWD will point to a deleted directory — run `cd <main-worktree>` afterward.
 
-### Stopping dev servers (keeping infrastructure)
+### Stopping the dev server (keeping infrastructure)
 
 ```sh
-npm run dev:agent:stop   # Stop dev servers only — Docker containers keep running
-npm run dev:agent        # Later, restart quickly
+npm run dev:down   # Stop the dev server only — Docker containers keep running
+npm run dev:up     # Later, restart quickly
 ```
 
 ### Creating a worktree without setup
@@ -221,8 +234,8 @@ When you only need a worktree (no slot, no config, no install), use `git worktre
 ```json
 {
   "setup-worktree": "node scripts/local-env/setup-worktree.mjs",
-  "dev:agent": "node scripts/local-env/dev-agent.mjs",
-  "dev:agent:stop": "node scripts/local-env/dev-agent.mjs --stop"
+  "dev:up": "node scripts/local-env/dev-server.mjs",
+  "dev:down": "node scripts/local-env/dev-server.mjs --stop"
 }
 ```
 
@@ -242,6 +255,9 @@ This works reliably regardless of where worktrees are physically located. The co
 
 **Why does the script handle worktree creation instead of relying on manual `git worktree add`?**
 Centralizing worktree path computation prevents a common mistake: creating the worktree as a child directory of the main worktree instead of a sibling. The script derives the path automatically from the branch name and the main worktree directory name.
+
+**Why copy configs from the main worktree instead of from `.example` files?**
+Sibling worktrees should inherit the developer's main-worktree customizations (e.g., a public dev-server IP overriding `localhost`, alternate hosts, secrets configured once). The `.example` files remain the bootstrap source for the main worktree itself, but stop being the per-worktree source after that — propagating customizations automatically is more valuable than re-deriving from the example each time.
 
 ## Agent Instructions
 
@@ -284,10 +300,13 @@ The agents need to know:
 - [ ] **Identify your config files.** Which files need port patching? Do they already have `.example` versions?
 - [ ] **Classify your gitignored directories.** Which are shared (symlinked)? Which are per-worktree?
 - [ ] **Decide how to provision the database.** File copy (SQLite)? Docker + migrations + seed (PostgreSQL)? The setup script must end with a working database.
-- [ ] **Decide on a success marker.** What does your dev server print when it's ready? This is needed for `dev-agent`.
+- [ ] **Decide on a success marker.** What does your dev server print when it's ready? This is needed for `dev-server`.
+- [ ] **Decide on fatal log markers for `dev-server`** (or leave the array empty). Substrings that mean "unrecoverable startup failure" let the script fail fast instead of waiting for the timeout.
+- [ ] **Bootstrap the main worktree's config files manually once** (from `.example` files), since sibling worktrees inherit from the main worktree.
 - [ ] **Write `setup-worktree`** using [assets/setup-worktree.mjs](assets/setup-worktree.mjs) as a starting point. Search for `ADAPT` comments.
-- [ ] **Write `dev-agent`** using [assets/dev-agent.mjs](assets/dev-agent.mjs) as a starting point. Same approach.
-- [ ] **Add npm scripts** (or Makefile targets, etc.) for `setup-worktree`, `dev:agent`, `dev:agent:stop`.
+- [ ] **Write `dev-server`** using [assets/dev-server.mjs](assets/dev-server.mjs) as a starting point. Same approach.
+- [ ] **Strip the template scaffolding.** Delete every `ADAPT` / `ALTERNATIVE` comment, inline example, and unused branch from the final scripts. The committed files should read as native to the codebase.
+- [ ] **Add npm scripts** (or Makefile targets, etc.) for `setup-worktree`, `dev:up`, `dev:down`.
 - [ ] **Update `.gitignore`** to ignore your shared and per-worktree directories.
 - [ ] **Write agent documentation** if applicable (see [assets/agent-local-env.md](assets/agent-local-env.md)).
 - [ ] **Update your main instruction file** (`AGENTS.md` / `CLAUDE.md`) with a pointer to the agent documentation and any conventions (branch naming, commit messages) the agent needs to follow.
