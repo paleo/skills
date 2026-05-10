@@ -53,7 +53,7 @@ Note: Services that run in Docker (like a database) can have their host port rem
 
 ### Slot-based port allocation
 
-Each worktree gets a unique "slot" that determines its port(s). A central **slot registry** (a JSON file stored in a shared directory) tracks which slots are assigned to which worktrees.
+Each worktree gets a unique "slot" that determines its port(s). A central **slot registry** (a JSON file stored in a shared directory) tracks which slots are assigned to which worktrees. The template ships with 19 linked-worktree slots; the main worktree is implicit, for 20 workspaces total.
 
 **Design the port scheme based on how many ports each environment needs.** The template script uses a step of 10 between slots, which leaves room for multiple ports per environment (e.g. frontend=8110, server=8111). Some examples:
 
@@ -63,18 +63,32 @@ Each worktree gets a unique "slot" that determines its port(s). A central **slot
 
 The slot is identified by the primary port number itself (e.g., `--slot 8120`).
 
-**Registry format** (stored in a shared directory, e.g. `.local/worktree-slots.json`):
+**Registry format** (stored in a shared directory, e.g. `.local/worktrees/slots.json`):
 
 ```json
 {
   "slots": {
-    "8110": { "worktree": "/absolute/path/to/myproject-feat-214", "branch": "feat/214" },
-    "8130": { "worktree": "/absolute/path/to/myproject-feat-234", "branch": "feat/234" }
+    "8110": { "worktree": "/absolute/path/to/myproject-feat-214", "branch": "feat/214", "owner": "alice" },
+    "8130": { "worktree": "/absolute/path/to/myproject-feat-234", "branch": "feat/234", "owner": "default" }
   }
 }
 ```
 
 The main worktree's port is implicit and never stored in the registry.
+
+### Concurrent dev-server cap
+
+Host RAM is shared. Without a cap, parallel dev-servers (especially when an AI bot fans out worktrees) can exhaust memory. The template enforces a cap on every `dev:up`.
+
+Resolution order for the limit:
+
+1. `<PROJECT>_DEV_LIMIT` (project-specific env var name set via an `ADAPT` constant; e.g. `MYAPP_DEV_LIMIT`).
+2. `PROJECT_DEV_LIMIT` (cross-project default — set once in shell rc).
+3. Hardcoded `DEV_LIMIT_DEFAULT = 5`.
+
+`0` means unlimited. Empty / unset / non-numeric values fall through to the next candidate.
+
+A second registry, `.local/worktrees/dev-servers.json`, tracks live dev-servers. It lives in the main worktree's shared directory; linked worktrees reach it via the existing `.local` symlink. An entry is **live** if at least one PID in its `pids` map is alive; dead entries are pruned on every read. When `live >= limit`, `dev:up` aborts and lists the active servers (slot, branch, owner, pids, started-at, worktree path).
 
 ### Config files must be gitignored
 
@@ -97,17 +111,17 @@ This is the central piece. It handles the full worktree lifecycle: creation, set
 
 See [assets/setup-worktree.mjs](assets/setup-worktree.mjs) for a template implementation.
 
-**What it does for setup (with `--checkout` or `--create`):**
+**What it does for setup (with `--use` or `--create`):**
 
 1. **Creates the worktree.** Computes the worktree path automatically (`../<reponame>-<sanitized-branch>`) to prevent misplacement. With `--create`, handles branch name deduplication (appends `-2`, `-3`, etc. if the branch already exists).
 2. **Detects worktrees.** Finds the main worktree path via `git rev-parse --git-common-dir` (the parent of `.git`).
-3. **Assigns a slot.** Auto-assigns the first available port, or accepts `--slot PORT` for a specific one. Writes the assignment to the slot registry in the main worktree's shared directory.
+3. **Assigns a slot.** Auto-assigns the first available port, or accepts `--slot PORT` for a specific one. Records `worktree`, `branch`, and `owner` (from `--owner`, defaults to `"default"`; preserved on re-setup when `--owner` is omitted) in the slot registry in the main worktree's shared directory.
 4. **Creates per-worktree directories.**
 5. **Symlinks shared directories** to the main worktree using relative paths.
 6. **Provisions the database.** The goal is that the worktree ends up with a working database. How depends on the project (see "Database provisioning" below).
 7. **Generates config files** from example templates with ports patched in.
 8. **Installs dependencies and builds** (or whatever your project needs for a cold start).
-9. **Prints a summary** with the assigned slot, branch name, and URLs.
+9. **Prints a summary** with the assigned slot, branch name, owner, and URLs.
 
 **What it does for removal (with `--remove`):**
 
@@ -115,15 +129,18 @@ See [assets/setup-worktree.mjs](assets/setup-worktree.mjs) for a template implem
 2. **Checks the remote** (unless `--no-remote-check`): verifies the branch has been removed from the remote before proceeding.
 3. **Stops the dev server** if running (reads the PID file, kills the process group).
 4. **Frees the slot** from the registry.
-5. **Removes the worktree** directory via `git worktree remove --force` (force is needed because per-worktree directories contain untracked files).
+5. **Drops the matching `dev-servers.json` entry** if any.
+6. **Removes the worktree** directory via `git worktree remove --force` (force is needed because per-worktree directories contain untracked files).
 
 **CLI flags:**
 
 | Flag | Purpose |
 | --- | --- |
-| `--checkout BRANCH` | Create a worktree for an existing branch, then set up the local environment |
+| `--use BRANCH` | Create a worktree for an existing branch, then set up the local environment |
 | `--create BRANCH` | Create a new branch (with suffix dedup) + worktree, then set up the local environment |
 | `--self` | Set up the local environment in the current linked worktree |
+| `--owner NAME` | Owner of the slot (free-form label, defaults to `"default"`) |
+| `--set-owner NAME` | Update the owner of the current linked worktree's slot — no rebuild |
 | `--remove BRANCH` | Stop dev server + free slot + remove worktree by branch name |
 | `--remove-self` | Remove the current linked worktree (same as `--remove`, but for the worktree you are in) |
 | `--no-remote-check` | Skip remote branch verification when removing (use with `--remove` or `--remove-self`) |
@@ -139,6 +156,8 @@ Running the script with no mode flag shows help.
 - **`DEV_SERVER_PID_FILES`**: One entry per PID file your `dev-server` writes. Used by `--remove` to stop the dev server cleanly.
 - **Per-worktree directories**: Choose what your project needs (database files, caches, logs, Docker volumes...).
 - **Build step**: `npm install && npm run build`, `pip install`, `cargo build`, `docker compose build`, etc.
+- **`MAX_SLOT_COUNT`**: Default `19`. Adjust if a different ceiling fits your project.
+- **Project-specific `<PROJECT>_DEV_LIMIT` env-var name**: chosen in `dev-server.mjs` and referenced everywhere the cap is documented.
 
 ### Database provisioning
 
@@ -169,12 +188,17 @@ See [assets/dev-server.mjs](assets/dev-server.mjs) for a template implementation
 **What it does:**
 
 1. Reads each server's port from its config file (the busy-port check) and verifies no port is already in use.
-2. Aborts if a sibling `dev-server` is already running (PID file + alive check).
-3. Optionally starts infrastructure services in `ensureInfrastructure()` (e.g., `docker compose up -d`) before any dev server. By default this is a no-op.
-4. Iterates over the `SERVERS` array, spawning each process as a detached process group with stdout/stderr redirected to a per-process log file and the PID written to a per-process PID file.
-5. Polls each log file in parallel for a success marker. Fails fast on any configured fatal `errorMarkers` substring (e.g. `"[ExceptionHandler]"`, Node's `"Node.js v"` exit footer) or if the process dies, instead of waiting for the timeout.
-6. On any startup failure, prints the last lines of the failing log, stops every spawned sibling process, and exits non-zero.
-7. On success, prints a summary listing each process's URL, PID, and log path.
+2. Reads `dev-servers.json`, prunes dead entries, and refuses to start when the live count meets the cap (`<PROJECT>_DEV_LIMIT` → `PROJECT_DEV_LIMIT` → default `5`; `0` = unlimited).
+3. Aborts if a sibling `dev-server` is already running (PID file + alive check).
+4. Optionally starts infrastructure services in `ensureInfrastructure()` (e.g., `docker compose up -d`) before any dev server. By default this is a no-op.
+5. Iterates over the `SERVERS` array, spawning each process as a detached process group with stdout/stderr redirected to a per-process log file and the PID written to a per-process PID file.
+6. Polls each log file in parallel for a success marker. Fails fast on any configured fatal `errorMarkers` substring (e.g. `"[ExceptionHandler]"`, Node's `"Node.js v"` exit footer) or if the process dies, instead of waiting for the timeout.
+7. On any startup failure, prints the last lines of the failing log, stops every spawned sibling process, and exits non-zero.
+8. On success, registers the dev-server in `dev-servers.json` (slot, worktree, branch, owner, pids keyed by `SERVERS[i].name`, `startedAt`) and prints a summary listing each process's URL, PID, and log path.
+
+`dev:list` prints the active dev-servers (sorted by slot). `dev:down --all` runs the SIGTERM-poll-SIGKILL stop logic against every PID in every entry, removes per-worktree PID files, and clears the registry. Neither touches infrastructure.
+
+**Main worktree synthesis:** the main worktree never has a row in `slots.json`. When `dev:up` (or `dev:list` / `dev:down --all`) runs there, it synthesizes an in-memory slot using `BASE_PORT`, the current branch, and `owner: "default"` so the entry still flows through `dev-servers.json` and counts toward the cap.
 
 A single-process dev server uses a `SERVERS` array with one entry; the script's structure stays the same.
 
@@ -192,15 +216,20 @@ This separation matters because infrastructure services (databases, caches) are 
 - **`SERVERS` entries**: One per dev server process. Each entry sets the spawn command, success marker, fatal `errorMarkers`, PID/log paths, and the env file + variable to read the port from.
 - **Fatal markers**: Pick log substrings that mean "unrecoverable" for your stack (or leave the array empty). Failing fast on these saves the full timeout.
 - **`ensureInfrastructure()`**: Uncomment / extend the `docker compose up -d` call if your project has Docker-managed infrastructure that must run before the dev server.
+- **`PROJECT_DEV_LIMIT_VAR`**: set to your project's env-var name (e.g. `MYAPP_DEV_LIMIT`). Adjust `DEV_LIMIT_DEFAULT` if `5` doesn't fit.
 
 ## Workflow
 
 ### Setting up a new local environment
 
 ```sh
-npm run setup-worktree -- --checkout feat/42     # existing branch
+npm run setup-worktree -- --use feat/42          # existing branch
 npm run setup-worktree -- --create feat/42       # new branch (dedup: appends -2, -3… if taken)
 npm run setup-worktree -- --self                 # manual worktree (created with git worktree add)
+
+# Tag a slot's owner (free-form label; useful for AI bots passing a Discord username)
+npm run setup-worktree -- --use feat/42 --owner alice
+npm run setup-worktree -- --set-owner bob        # update later, no rebuild
 
 # Start developing
 npm run dev
@@ -225,6 +254,13 @@ npm run dev:down   # Stop the dev server only — Docker containers keep running
 npm run dev:up     # Later, restart quickly
 ```
 
+### Listing and stopping all dev servers
+
+```sh
+npm run dev:list             # List active dev-servers across all worktrees
+npm run dev:down -- --all    # Stop every active dev-server (infrastructure stays up)
+```
+
 ### Creating a worktree without setup
 
 When you only need a worktree (no slot, no config, no install), use `git worktree` CLI directly.
@@ -235,7 +271,8 @@ When you only need a worktree (no slot, no config, no install), use `git worktre
 {
   "setup-worktree": "node scripts/local-env/setup-worktree.mjs",
   "dev:up": "node scripts/local-env/dev-server.mjs",
-  "dev:down": "node scripts/local-env/dev-server.mjs --stop"
+  "dev:down": "node scripts/local-env/dev-server.mjs --stop",
+  "dev:list": "node scripts/local-env/dev-server.mjs --list"
 }
 ```
 
@@ -307,6 +344,7 @@ The agents need to know:
 - [ ] **Write `dev-server`** using [assets/dev-server.mjs](assets/dev-server.mjs) as a starting point. Same approach.
 - [ ] **Strip the template scaffolding.** Delete every `ADAPT` / `ALTERNATIVE` comment, inline example, and unused branch from the final scripts. The committed files should read as native to the codebase.
 - [ ] **Add npm scripts** (or Makefile targets, etc.) for `setup-worktree`, `dev:up`, `dev:down`.
-- [ ] **Update `.gitignore`** to ignore your shared and per-worktree directories.
+- [ ] **Choose your project-specific dev-limit env-var name** (`<PROJECT>_DEV_LIMIT`) and review the default cap (`5`).
+- [ ] **Update `.gitignore`** to ignore your shared and per-worktree directories. Make sure `.local/worktrees/` is covered (slot registry and dev-server registry live there).
 - [ ] **Write agent documentation** if applicable (see [assets/agent-local-env.md](assets/agent-local-env.md)).
 - [ ] **Update your main instruction file** (`AGENTS.md` / `CLAUDE.md`) with a pointer to the agent documentation and any conventions (branch naming, commit messages) the agent needs to follow.

@@ -27,18 +27,22 @@ import { parseArgs } from "node:util";
 // With a step of 10 you get room for multiple ports per slot.
 const BASE_PORT = 8100;
 const PORT_STEP = 10;
+// ADAPT: Number of linked-worktree slots; main worktree is implicit.
+const MAX_SLOT_COUNT = 19;
 const MIN_PORT = BASE_PORT + PORT_STEP;
-const MAX_PORT = BASE_PORT + 9 * PORT_STEP;
+const MAX_PORT = BASE_PORT + MAX_SLOT_COUNT * PORT_STEP;
 
-// ADAPT: Path to the slot registry file (stored in a shared/symlinked directory).
-const SLOTS_FILE = ".local/worktree-slots.json";
+// ADAPT: Directory holding shared worktree state files (slot registry, dev-server registry).
+const WORKTREES_DIR = ".local/worktrees";
+const SLOTS_FILE = ".local/worktrees/slots.json";
+const DEV_SERVERS_FILE = ".local/worktrees/dev-servers.json";
 
 // ADAPT: Add one entry per PID file your `dev-server` writes (must match dev-server.mjs).
 const DEV_SERVER_PID_FILES = [".local-data/dev-server.pid"];
 
 const CLI_OPTIONS = {
   help: { type: "boolean", short: "h", description: "Show this help message" },
-  checkout: {
+  use: {
     type: "string",
     arg: "branch",
     description: "Create a worktree for an existing branch, then set up the local environment",
@@ -52,6 +56,16 @@ const CLI_OPTIONS = {
   self: {
     type: "boolean",
     description: "Set up the local environment in the current linked worktree",
+  },
+  owner: {
+    type: "string",
+    arg: "name",
+    description: "Owner of the slot (free-form label, defaults to \"default\")",
+  },
+  "set-owner": {
+    type: "string",
+    arg: "name",
+    description: "Update the owner of the current linked worktree's slot (no rebuild)",
   },
   remove: {
     type: "string",
@@ -99,7 +113,7 @@ function main() {
 
   validateFlags(args);
 
-  if (!isSetupMode(args) && !isRemoveMode(args)) {
+  if (!isSetupMode(args) && !isRemoveMode(args) && !isSetOwnerMode(args)) {
     printHelp();
     process.exit(0);
   }
@@ -112,11 +126,16 @@ function main() {
     process.exit(0);
   }
 
+  if (isSetOwnerMode(args)) {
+    handleSetOwner(args, ctx);
+    process.exit(0);
+  }
+
   validateSlotAvailability(args, ctx);
 
   const setupCtx = ensureWorktree(args, ctx);
   const branch = getCurrentBranch(setupCtx.currentWorktree);
-  const slot = resolveAndRegisterSlot(args, setupCtx, branch);
+  const { port: slot, owner } = resolveAndRegisterSlot(args, setupCtx, branch, args.owner);
   const ports = computePorts(slot);
 
   log(`Using slot ${slot} (server: ${ports.server}, frontend: ${ports.frontend}, db: ${ports.db})`);
@@ -129,7 +148,7 @@ function main() {
   installAndBuild(setupCtx.currentWorktree);
   runMigrationsAndSeed(setupCtx.currentWorktree);
 
-  printSummary(slot, branch, ports);
+  printSummary(slot, branch, owner, ports);
 }
 
 function parseCliArgs() {
@@ -153,14 +172,24 @@ function isRemoveMode(args) {
 }
 
 function isSetupMode(args) {
-  return args.checkout !== undefined || args.create !== undefined || Boolean(args.self);
+  return args.use !== undefined || args.create !== undefined || Boolean(args.self);
+}
+
+function isSetOwnerMode(args) {
+  return args["set-owner"] !== undefined;
 }
 
 function validateFlags(args) {
-  const modeFlags = [args.checkout, args.create, args.self, isRemoveMode(args)].filter(Boolean);
+  const modeFlags = [
+    args.use,
+    args.create,
+    args.self,
+    isRemoveMode(args),
+    isSetOwnerMode(args),
+  ].filter(Boolean);
   if (modeFlags.length > 1) {
     console.error(
-      "Error: --checkout, --create, --self, --remove, and --remove-self are mutually exclusive.",
+      "Error: --use, --create, --self, --remove, --remove-self, and --set-owner are mutually exclusive.",
     );
     process.exit(1);
   }
@@ -172,8 +201,13 @@ function validateFlags(args) {
 
   if ((args.slot !== undefined || args.force) && !isSetupMode(args)) {
     console.error(
-      "Error: --slot and --force can only be used with --checkout, --create, or --self.",
+      "Error: --slot and --force can only be used with --use, --create, or --self.",
     );
+    process.exit(1);
+  }
+
+  if (args.owner !== undefined && !isSetupMode(args)) {
+    console.error("Error: --owner is only valid with --use, --create, or --self.");
     process.exit(1);
   }
 
@@ -194,9 +228,9 @@ function detectWorktree() {
 }
 
 function enforceWorktreeMode(args, ctx) {
-  if (args.checkout || args.create) {
+  if (args.use || args.create) {
     if (!ctx.isMainWorktree) {
-      console.error("Error: --checkout and --create must be run from the main worktree.");
+      console.error("Error: --use and --create must be run from the main worktree.");
       process.exit(1);
     }
   } else if (args.self) {
@@ -227,12 +261,12 @@ function validateSlotAvailability(args, ctx) {
 }
 
 function ensureWorktree(args, ctx) {
-  if (args.checkout) return checkoutBranch(args.checkout, ctx);
+  if (args.use) return useExistingBranch(args.use, ctx);
   if (args.create) return createBranch(args.create, ctx);
   return ctx;
 }
 
-function checkoutBranch(branch, ctx) {
+function useExistingBranch(branch, ctx) {
   const stdio = verbose ? "inherit" : "pipe";
   if (!branchExists(branch)) {
     console.error(`Error: Branch "${branch}" does not exist locally or on the remote.`);
@@ -283,6 +317,7 @@ function handleRemove(args, ctx) {
 
   delete registry.slots[target.slotPort];
   writeSlots(ctx.mainWorktree, registry);
+  removeDevServerEntryByWorktree(ctx.mainWorktree, target.worktreePath);
 
   if (removeSelf) {
     process.chdir(ctx.mainWorktree);
@@ -362,12 +397,21 @@ function getCurrentBranch(worktreePath) {
   }).trim();
 }
 
-function resolveAndRegisterSlot(args, ctx, branch) {
+function resolveAndRegisterSlot(args, ctx, branch, requestedOwner) {
   const registry = readSlots(ctx.mainWorktree);
   const port = pickSlotPort(args, ctx, registry);
-  registry.slots[String(port)] = { worktree: ctx.currentWorktree, branch };
+  const existing = registry.slots[String(port)];
+  let owner;
+  if (requestedOwner !== undefined) {
+    owner = requestedOwner;
+  } else if (existing && existing.owner !== undefined) {
+    owner = existing.owner;
+  } else {
+    owner = "default";
+  }
+  registry.slots[String(port)] = { worktree: ctx.currentWorktree, branch, owner };
   writeSlots(ctx.mainWorktree, registry);
-  return port;
+  return { port, owner };
 }
 
 function pickSlotPort(args, ctx, registry) {
@@ -556,11 +600,12 @@ function runCommand(command, worktreePath, label) {
 }
 
 // ADAPT: Print URLs relevant to your project.
-function printSummary(slot, branch, ports) {
+function printSummary(slot, branch, owner, ports) {
   console.log(`
 Worktree setup complete!
   Slot:     ${slot}
   Branch:   ${branch}
+  Owner:    ${owner}
   Server:   http://localhost:${ports.server}/
   Frontend: http://localhost:${ports.frontend}/
   DB port:  ${ports.db}
@@ -600,8 +645,62 @@ function readSlots(mainWorktree) {
 
 function writeSlots(mainWorktree, registry) {
   const filePath = join(mainWorktree, SLOTS_FILE);
-  mkdirSync(join(mainWorktree, ".local"), { recursive: true });
+  mkdirSync(join(mainWorktree, WORKTREES_DIR), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(registry, undefined, 2)}\n`);
+}
+
+function readDevServers(mainWorktree) {
+  const filePath = join(mainWorktree, DEV_SERVERS_FILE);
+  if (!existsSync(filePath)) return { servers: [] };
+  return JSON.parse(readFileSync(filePath, "utf-8"));
+}
+
+function writeDevServers(mainWorktree, data) {
+  const filePath = join(mainWorktree, DEV_SERVERS_FILE);
+  mkdirSync(join(mainWorktree, WORKTREES_DIR), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(data, undefined, 2)}\n`);
+}
+
+function removeDevServerEntryByWorktree(mainWorktree, worktreePath) {
+  const filePath = join(mainWorktree, DEV_SERVERS_FILE);
+  if (!existsSync(filePath)) return;
+  const data = readDevServers(mainWorktree);
+  const target = resolve(worktreePath);
+  const filtered = data.servers.filter((entry) => resolve(entry.worktree) !== target);
+  if (filtered.length === data.servers.length) return;
+  writeDevServers(mainWorktree, { servers: filtered });
+}
+
+function handleSetOwner(args, ctx) {
+  if (ctx.isMainWorktree) {
+    console.error("Error: --set-owner must be run from a linked worktree.");
+    process.exit(1);
+  }
+  const newOwner = args["set-owner"];
+  const registry = readSlots(ctx.mainWorktree);
+  const resolvedCurrent = resolve(ctx.currentWorktree);
+  const entry = Object.entries(registry.slots).find(
+    ([, v]) => resolve(v.worktree) === resolvedCurrent,
+  );
+  if (!entry) {
+    console.error("Error: No slot found for this worktree in the registry.");
+    process.exit(1);
+  }
+  const [slotPort, slotData] = entry;
+  registry.slots[slotPort] = { ...slotData, owner: newOwner };
+  writeSlots(ctx.mainWorktree, registry);
+
+  const devData = readDevServers(ctx.mainWorktree);
+  let devChanged = false;
+  for (const server of devData.servers) {
+    if (resolve(server.worktree) === resolvedCurrent) {
+      server.owner = newOwner;
+      devChanged = true;
+    }
+  }
+  if (devChanged) writeDevServers(ctx.mainWorktree, devData);
+
+  console.log(`Owner for slot ${slotPort}: ${newOwner}`);
 }
 
 function branchExists(branch) {

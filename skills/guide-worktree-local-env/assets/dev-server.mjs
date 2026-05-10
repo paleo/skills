@@ -25,12 +25,23 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const LOG_TAIL_LINES = 30;
 const POLL_INTERVAL_MS = 500;
 const TIMEOUT_MS = 120_000;
+
+// Shared worktree state files. Resolved against cwd; in linked worktrees the
+// `.local` symlink points at the main worktree's directory.
+const WORKTREES_DIR_REL = ".local/worktrees";
+const SLOTS_FILE_REL = ".local/worktrees/slots.json";
+const DEV_SERVERS_FILE_REL = ".local/worktrees/dev-servers.json";
+
+// ADAPT: Default cap on concurrent dev-servers. `0` = unlimited.
+const DEV_LIMIT_DEFAULT = 5;
+// ADAPT: Project-specific override env var name; e.g. `MYAPP_DEV_LIMIT`.
+const PROJECT_DEV_LIMIT_VAR = "<PROJECT>_DEV_LIMIT";
 
 // ADAPT: Add one entry per dev server process. A "dev server" can be a single
 // process or several cooperating processes (e.g. an API watcher plus a frontend
@@ -66,18 +77,50 @@ async function main() {
   const { values: args } = parseArgs({
     options: {
       stop: { type: "boolean" },
+      list: { type: "boolean" },
+      all: { type: "boolean" },
     },
     strict: true,
   });
 
-  if (args.stop) {
+  validateArgs(args);
+
+  if (args.list) {
+    await listDevServers();
+  } else if (args.stop && args.all) {
+    await stopAll();
+  } else if (args.stop) {
     await stop();
   } else {
     await start();
   }
 }
 
+function validateArgs(args) {
+  if (args.all && !args.stop) {
+    console.error("Error: --all requires --stop.");
+    process.exit(1);
+  }
+  if (args.list && (args.stop || args.all)) {
+    console.error("Error: --list is mutually exclusive with --stop and --all.");
+    process.exit(1);
+  }
+}
+
 async function start() {
+  const limit = readDevLimit();
+  const active = pruneDeadServers(readDevServers()).servers;
+  if (limit > 0 && active.length >= limit) {
+    console.error(
+      `Error: dev-server cap reached (${active.length}/${limit}). Active dev-servers:`,
+    );
+    printActiveServers(active);
+    console.error(
+      "Run `dev:down` in another worktree, or `dev:down --all`.",
+    );
+    process.exit(1);
+  }
+
   const serverPorts = resolveServerPorts();
 
   await ensurePortsFree(serverPorts);
@@ -92,6 +135,8 @@ async function start() {
 
   await awaitAllReady(pids);
 
+  registerDevServer(pids);
+
   printSummary(serverPorts, pids);
 }
 
@@ -99,6 +144,7 @@ async function stop() {
   for (const server of SERVERS) {
     await stopOne(server);
   }
+  unregisterDevServer();
 }
 
 function resolveServerPorts() {
@@ -211,7 +257,9 @@ async function handleStartupFailure(err) {
 }
 
 function printSummary(serverPorts, pids) {
+  const slot = resolveCurrentSlot();
   console.log("\nDev servers started!");
+  console.log(`  Worktree: slot ${slot.slot}, owner ${slot.owner}`);
   SERVERS.forEach((server, i) => {
     const [, port] = serverPorts[i];
     const url = `http://localhost:${port}/`;
@@ -231,21 +279,172 @@ async function stopOne(server) {
   }
 
   console.log(`Stopping ${server.name} (PID ${pid})...`);
-  killProcessGroup(pid, "SIGTERM");
+  await stopProcessGroup(pid);
+  cleanupPidFile(server.pidFile);
+  console.log(`${server.name} stopped.`);
+}
 
+async function stopProcessGroup(pid) {
+  killProcessGroup(pid, "SIGTERM");
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 300));
-    if (!isProcessGroupAlive(pid)) {
-      cleanupPidFile(server.pidFile);
-      console.log(`${server.name} stopped.`);
-      return;
+    if (!isProcessGroupAlive(pid)) return;
+  }
+  killProcessGroup(pid, "SIGKILL");
+}
+
+// --- Registry I/O ---
+
+function readDevServers() {
+  if (!existsSync(DEV_SERVERS_FILE_REL)) return { servers: [] };
+  return JSON.parse(readFileSync(DEV_SERVERS_FILE_REL, "utf-8"));
+}
+
+function writeDevServers(data) {
+  mkdirSync(WORKTREES_DIR_REL, { recursive: true });
+  writeFileSync(DEV_SERVERS_FILE_REL, `${JSON.stringify(data, undefined, 2)}\n`);
+}
+
+function readSlots() {
+  if (!existsSync(SLOTS_FILE_REL)) return { slots: {} };
+  return JSON.parse(readFileSync(SLOTS_FILE_REL, "utf-8"));
+}
+
+function pruneDeadServers(data) {
+  const live = data.servers.filter((entry) =>
+    Object.values(entry.pids).some((pid) => isProcessAlive(pid)),
+  );
+  if (live.length !== data.servers.length) {
+    writeDevServers({ servers: live });
+  }
+  return { servers: live };
+}
+
+function readDevLimit() {
+  const candidates = [process.env[PROJECT_DEV_LIMIT_VAR], process.env.PROJECT_DEV_LIMIT];
+  for (const raw of candidates) {
+    if (raw === undefined || raw === "") continue;
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed >= 0) return parsed;
+  }
+  return DEV_LIMIT_DEFAULT;
+}
+
+function lookupSlotForCwd() {
+  const registry = readSlots();
+  const resolvedCwd = resolve(process.cwd());
+  for (const [port, entry] of Object.entries(registry.slots)) {
+    if (resolve(entry.worktree) === resolvedCwd) {
+      return {
+        slot: Number(port),
+        worktree: entry.worktree,
+        branch: entry.branch,
+        owner: entry.owner ?? "default",
+      };
     }
   }
+  return undefined;
+}
 
-  killProcessGroup(pid, "SIGKILL");
-  cleanupPidFile(server.pidFile);
-  console.log(`${server.name} force-killed.`);
+function synthesizeMainSlot() {
+  const gitCommonDir = execSync("git rev-parse --path-format=absolute --git-common-dir", {
+    encoding: "utf-8",
+  }).trim();
+  const mainWorktree = dirname(gitCommonDir);
+  const cwd = resolve(process.cwd());
+  if (resolve(mainWorktree) !== cwd) return undefined;
+  const branch = execSync("git branch --show-current", { encoding: "utf-8" }).trim();
+  // ADAPT: the slot for the main worktree is the primary port read from the env file.
+  const slot = Number(readEnvVar(SERVERS[0].portConfig.file, SERVERS[0].portConfig.varName));
+  return { slot, worktree: cwd, branch, owner: "default" };
+}
+
+function resolveCurrentSlot() {
+  const slot = lookupSlotForCwd() ?? synthesizeMainSlot();
+  if (!slot) {
+    console.error("Error: No slot found for this worktree. Run setup-worktree first.");
+    process.exit(1);
+  }
+  return slot;
+}
+
+function registerDevServer(pids) {
+  const slot = resolveCurrentSlot();
+  const pidMap = {};
+  SERVERS.forEach((server, i) => {
+    pidMap[server.name] = pids[i];
+  });
+  const data = pruneDeadServers(readDevServers());
+  data.servers.push({
+    slot: slot.slot,
+    worktree: slot.worktree,
+    branch: slot.branch,
+    owner: slot.owner,
+    pids: pidMap,
+    startedAt: new Date().toISOString(),
+  });
+  writeDevServers(data);
+}
+
+function unregisterDevServer() {
+  if (!existsSync(DEV_SERVERS_FILE_REL)) return;
+  const data = pruneDeadServers(readDevServers());
+  const resolvedCwd = resolve(process.cwd());
+  const filtered = data.servers.filter((entry) => resolve(entry.worktree) !== resolvedCwd);
+  if (filtered.length === data.servers.length) return;
+  writeDevServers({ servers: filtered });
+}
+
+async function listDevServers() {
+  const data = pruneDeadServers(readDevServers());
+  if (data.servers.length === 0) {
+    console.log("No dev-servers running.");
+    return;
+  }
+  const sorted = [...data.servers].sort((a, b) => a.slot - b.slot);
+  for (const entry of sorted) {
+    const pids = Object.entries(entry.pids)
+      .map(([name, pid]) => `${name}=${pid}`)
+      .join(",");
+    console.log(
+      `  slot ${entry.slot}  branch=${entry.branch}  owner=${entry.owner}  pids=${pids}  startedAt=${entry.startedAt}  worktree=${entry.worktree}`,
+    );
+  }
+}
+
+async function stopAll() {
+  const data = pruneDeadServers(readDevServers());
+  if (data.servers.length === 0) {
+    console.log("No dev-servers running.");
+    return;
+  }
+  for (const entry of data.servers) {
+    console.log(`Stopping slot ${entry.slot} (${entry.branch}, owner=${entry.owner})...`);
+    for (const [name, pid] of Object.entries(entry.pids)) {
+      if (!isProcessAlive(pid)) continue;
+      console.log(`  ${name} (PID ${pid})`);
+      await stopProcessGroup(pid);
+    }
+    for (const server of SERVERS) {
+      const pidFile = join(entry.worktree, server.pidFile);
+      if (existsSync(pidFile)) unlinkSync(pidFile);
+    }
+  }
+  writeDevServers({ servers: [] });
+  console.log(`Stopped ${data.servers.length} dev-server(s).`);
+}
+
+function printActiveServers(active) {
+  const sorted = [...active].sort((a, b) => a.slot - b.slot);
+  for (const entry of sorted) {
+    const pids = Object.entries(entry.pids)
+      .map(([name, pid]) => `${name}=${pid}`)
+      .join(",");
+    process.stderr.write(
+      `  slot ${entry.slot}  branch=${entry.branch}  owner=${entry.owner}  pids=${pids}  startedAt=${entry.startedAt}  worktree=${entry.worktree}\n`,
+    );
+  }
 }
 
 // --- Leaf utilities ---
