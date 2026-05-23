@@ -4,7 +4,7 @@ description: TypeScript and JavaScript coding style conventions. Read before wri
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.1.0"
+  version: "0.1.1"
   repository: https://github.com/paleo/skills
 ---
 
@@ -116,6 +116,8 @@ Before adding a dependency or dev-dependency, search the codebase first and reus
 If the code is fine, say so. Otherwise, apply the following principles to keep the code clean, maintainable, and efficient.
 
 ## SRP - Single Responsibility Principle
+
+Think of it as **narrative decomposition**: the caller reads like a paragraph that names what happens; each helper expands one sentence of that paragraph.
 
 For example, this code:
 
