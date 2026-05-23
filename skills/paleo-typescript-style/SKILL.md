@@ -1,6 +1,6 @@
 ---
 name: paleo-typescript-style
-description: Paleo's TypeScript and JavaScript coding style conventions. Read before writing or reviewing TypeScript/JavaScript code, including code inside a spec or a plan.
+description: TypeScript and JavaScript coding style conventions. Read before writing or reviewing TypeScript/JavaScript code, including code inside a spec or a plan.
 license: CC0 1.0
 metadata:
   author: Paleo
