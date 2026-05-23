@@ -1,21 +1,13 @@
 # Paleo's Skills
 
-A collection of agent skills for AI coding agents.
+My personal collection of agent skills.
 
-## guide-worktree-local-env
+## paleo-typescript-style
 
-Blueprint for implementing a worktree-based concurrent local environment system in a repository.
-
-```sh
-npx skills add https://github.com/paleo/skills --skill guide-worktree-local-env
-```
-
-## paroicms-website
-
-Guidelines for working on a ParoiCMS website directory (themes, templates, configuration).
+Paleo's TypeScript and JavaScript coding style conventions.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill paroicms-website
+npx skills add https://github.com/paleo/skills --skill paleo-typescript-style
 ```
 
 ## pleasant-bem-css
@@ -24,6 +16,14 @@ Pleasant BEM syntax and methodology for writing CSS class names.
 
 ```sh
 npx skills add https://github.com/paleo/skills --skill pleasant-bem-css
+```
+
+## paroicms-website
+
+Guidelines for working on a ParoiCMS website directory (themes, templates, configuration).
+
+```sh
+npx skills add https://github.com/paleo/skills --skill paroicms-website
 ```
 
 ## License
