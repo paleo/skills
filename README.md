@@ -2,12 +2,12 @@
 
 My personal collection of agent skills.
 
-## top-down-typescript
+## paroicms-website
 
-TypeScript and JavaScript coding style conventions, built around top-down narrative ordering and functions over classes.
+Guidelines for working on a ParoiCMS website directory (themes, templates, configuration).
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill top-down-typescript
+npx skills add https://github.com/paleo/skills --skill paroicms-website
 ```
 
 ## pleasant-bem-css
@@ -18,12 +18,12 @@ Pleasant BEM syntax and methodology for writing CSS class names.
 npx skills add https://github.com/paleo/skills --skill pleasant-bem-css
 ```
 
-## paroicms-website
+## sharp-writing
 
-Guidelines for working on a ParoiCMS website directory (themes, templates, configuration).
+Conventions for writing sharp, concise prose and Markdown, for humans and AI agents.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill paroicms-website
+npx skills add https://github.com/paleo/skills --skill sharp-writing
 ```
 
 ## sysadmin
@@ -34,12 +34,12 @@ Discipline for administering a machine from a git repo that documents its config
 npx skills add https://github.com/paleo/skills --skill sysadmin
 ```
 
-## sharp-writing
+## top-down-typescript
 
-Conventions for writing sharp, concise prose and Markdown, for humans and AI agents.
+TypeScript and JavaScript coding style conventions, built around top-down narrative ordering and functions over classes.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill sharp-writing
+npx skills add https://github.com/paleo/skills --skill top-down-typescript
 ```
 
 ## License
