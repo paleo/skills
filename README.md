@@ -2,12 +2,12 @@
 
 My personal collection of agent skills.
 
-## paleo-typescript-style
+## top-down-typescript
 
-Paleo's TypeScript and JavaScript coding style conventions.
+TypeScript and JavaScript coding style conventions, built around top-down narrative ordering and functions over classes.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill paleo-typescript-style
+npx skills add https://github.com/paleo/skills --skill top-down-typescript
 ```
 
 ## pleasant-bem-css
@@ -32,6 +32,14 @@ Discipline for administering a machine from a git repo that documents its config
 
 ```sh
 npx skills add https://github.com/paleo/skills --skill sysadmin
+```
+
+## sharp-writing
+
+Conventions for writing sharp, concise prose and Markdown, for humans and AI agents.
+
+```sh
+npx skills add https://github.com/paleo/skills --skill sharp-writing
 ```
 
 ## License
