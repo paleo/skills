@@ -47,7 +47,11 @@ Two agents work on this repo — your role depends on which you are:
 - **VPS** (`~/<path-to-admin-repository>` on `<hostname>`, as `<user>`): **operator** — edits docs *and* executes.
 ```
 
-Replace `<path-to-admin-repository>` with the path to the repository on machine (the server) you run commands, `<hostname>` with the VPS hostname. The `<user>` is the Linux user you log in on the server.
+Replace the placeholders with values specific to the machine (the server) you run commands on:
+
+- `<path-to-admin-repository>`: the path to the repository;
+- `<hostname>`: the VPS hostname;
+- `<user>`: the Linux user you log in as on the server.
 
 ## top-down-typescript
 
