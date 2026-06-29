@@ -34,6 +34,21 @@ Discipline for administering a machine from a git repo that documents its config
 npx skills add https://github.com/paleo/skills --skill sysadmin
 ```
 
+### In your `AGENTS.md` or `CLAUDE.md` file
+
+```md
+## Sysadmin workflow
+
+Follow the `sysadmin` skill: record steps as runbooks under `docs/`, keep a per-task `.reports/` journal, and run commands carefully.
+
+Two agents work on this repo — your role depends on which you are:
+
+- **Laptop**: **support** — edits docs, never executes on the server.
+- **VPS** (`~/<path-to-admin-repository>` on `<hostname>`, as `<user>`): **operator** — edits docs *and* executes.
+```
+
+Replace `<path-to-admin-repository>` with the path to the repository on machine (the server) you run commands, `<hostname>` with the VPS hostname. The `<user>` is the Linux user you log in on the server.
+
 ## top-down-typescript
 
 TypeScript and JavaScript coding style conventions, built around top-down narrative ordering and functions over classes.
