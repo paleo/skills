@@ -5,7 +5,7 @@ license: CC0 1.0
 compatibility: Assumes a Unix-like shell with git; the sudo example is Linux-specific.
 metadata:
   author: Paleo
-  version: "0.1.0"
+  version: "0.2.0"
   repository: https://github.com/paleo/skills
 ---
 
@@ -32,3 +32,9 @@ Operator only. Whenever you run a command that changes the machine:
 2. **Stop on the unexpected.** If something doesn't go as expected, stop and report — what happened and what you suggest. Update the docs only after the user confirms. Log the incident in the report.
 3. **Don't guess machine-specific values.** Never substitute a deployment-specific value (IP, hostname, path, secret) from a guess. Ask the user for the real one before running anything that needs it.
 4. **`sudo` and `~`.** `sudo -i -u <user> -- … ~/path` expands `~` in *your* shell, not the target user's. Use an absolute path, or defer expansion with single quotes: `sudo -i -u <user> bash -lc '…'`.
+
+## Software sources
+
+Install only from trusted sources: the distro's official repositories, or vendor-official releases (AWS, Docker, etc.). Prefer a first-party distro package over a third-party container. Treat unknown publishers and typosquat names as suspect. When a trustworthy alternative exists, use it and drop the risky one.
+
+**Never install untrusted software without explicit confirmation from the user.**
