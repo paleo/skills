@@ -29,7 +29,7 @@ Rich text editor based on TipTap. Recommended for new projects.
 }
 ```
 
-**Field usage:**
+**Field usage (string shorthand):**
 
 ```json
 "fields": [
@@ -39,6 +39,32 @@ Rich text editor based on TipTap. Recommended for new projects.
   "footerMention[@paroicms/tiptap-editor-plugin]"
 ]
 ```
+
+**Field usage (object form — when you need per-field options):**
+
+```json
+"fields": [
+  {
+    "name": "htmlContent",
+    "localized": true,
+    "storedAs": "text",
+    "dataType": "json",
+    "plugin": "@paroicms/tiptap-editor-plugin",
+    "adminUi": { "editorRows": 12 }
+  }
+]
+```
+
+> **⚠️ `dataType` must be `"json"`, not `"string"`.**
+> Even though the field stores HTML text, the tiptap plugin serializes its content as a JSON tree (ProseMirror doc format). Using `dataType: "string"` causes a runtime error: *"field type is incompatible with Tiptap plugin, needs data type 'json'"*. This is counter-intuitive and easy to get wrong.
+>
+> **Required properties when using the object form:** `name`, `localized`, `storedAs`, `dataType`, and `plugin`. The string shorthand (e.g. `"htmlContent[@paroicms/tiptap-editor-plugin]"`) resolves all of these automatically from a library of predefined field types — but once you need to customize any property (like `adminUi.editorRows`), you must provide them all explicitly.
+
+**Per-field `adminUi` options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `editorRows` | `number` | `26` | Editor content area height in `rem` units. The total editor height is `calc(editorRows + 79px)` (content + toolbar). For example, `editorRows: 12` → ~348px total. Reduce this for compact editors in part/block types where a full-height editor is excessive. |
 
 **Template:**
 
@@ -288,10 +314,19 @@ Dynamic list field (JSON array).
     "localized": true,
     "storedAs": "text",
     "dataType": "json",
-    "plugin": "@paroicms/list-field-plugin"
+    "plugin": "@paroicms/list-field-plugin",
+    "adminUi": {
+      "sorting": "alpha",
+      "ignorePunctuation": true
+    }
   }
 ]
 ```
+
+`adminUi` options: `"sorting": "alpha"` keeps the list alphabetically sorted
+(locale-aware, on save — new items append at the end while editing, and drag
+handles are hidden); `"ignorePunctuation": true` makes the collation skip
+punctuation. Without `sorting`, the order is manual (drag-to-reorder).
 
 **Template:**
 
@@ -300,6 +335,22 @@ Dynamic list field (JSON array).
   {{ phone | obfuscate: 'asLink' }}
 {% endfor %}
 ```
+
+## Remote API & Automation
+
+### @paroicms/api-plugin
+
+PAT-protected HTTP API over the whole content surface, with the `paroicms` CLI as its reference client. Use it for scripts, migrations, and automation against a running site.
+
+**site-schema.json:**
+
+```json
+{
+  "plugins": ["@paroicms/api-plugin"]
+}
+```
+
+Full documentation — authentication, CLI commands, HTTP actions with payload shapes, field value formats, behavior notes: [api-plugin.md](api-plugin.md).
 
 ## AI & Generation
 

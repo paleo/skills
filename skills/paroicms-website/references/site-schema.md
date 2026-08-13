@@ -101,11 +101,18 @@ A site section with a fixed URL path:
 | `lists` | `ListType[]` | Part lists |
 | `routingChildren` | `string[]` | Child routing document types |
 | `regularChildren` | `string[]` | Child regular document types |
-| `regularChildrenSorting` | `string` | Sorting: `"title asc"`, `"publishDate desc"`, `"manual"` |
+| `regularChildrenSorting` | `string \| string[]` | Sorting of regular children in lists and admin UI. Accepts a string (e.g. `"title asc"`, `"publishDate desc"`, `"relativeId desc"`), an array of strings for multi-field sort, or `"manual"`. Supported fields: `title`, `publishDate`, `updatedAt`, `relativeId`, any `varchar` field of the document type, and `manual`. |
 | `childLimit` | `number` | Max children count |
 | `cluster.autoCreate` | `boolean` | Auto-create routing children |
 | `hasFrontendApp` | `boolean` | Serves a SPA |
 | `useUrlQuery` | `boolean` | Expose URL query to templates |
+
+#### `adminUi` options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `defaultTab` | `"parts" \| "edit" \| "auto"` | `"auto"` | Which tab to open when navigating to a document. `"auto"` opens `"parts"` if the type has part lists, otherwise `"edit"`. When set explicitly, the same tab is used from all entry points (list click, sidebar, breadcrumb, search). Without this option, different entry points may default to different tabs — a known inconsistency. |
+| `menuPlacement` | `"default" \| "popup"` | `"default"` | Where the node type appears in the admin sidebar. `"popup"` hides it behind a parent menu item. |
 
 ### Regular Document
 
@@ -133,6 +140,15 @@ Route patterns:
 
 - `:relativeId-:slug` - ID and slug
 - `:yyyy/:mm/:dd/:relativeId-:slug` - Date-based URL
+- `:relativeId` - ID only. With this pattern, the Admin-UI displays an editable
+  "relative ID" field on the document, so editors control the URL segment
+  directly (e.g. a year: `/contests/2026`)
+- `:slug` - slug only
+
+The relative ID identifies the document among its siblings: a URL with a wrong
+slug is 301-redirected to the canonical URL. `updateDocument` (admin GraphQL)
+accepts a `relativeId` value for any route pattern, validated for format and
+sibling uniqueness — only the Admin-UI editor is limited to `:relativeId` routes.
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -189,6 +205,12 @@ Fields can be defined inline or referenced by name.
   "dataType": "string"
 }
 ```
+
+### Field Ordering
+
+The order of fields in the `fields` array determines their display order in the Admin-UI editor (top to bottom). To move a field above another, simply reorder it in the array.
+
+When converting a field from string shorthand to object form (e.g. to add `adminUi.editorRows`), all required properties must be provided explicitly — see the [tiptap plugin docs](plugins.md#paroicmstiptap-editor-plugin) for a worked example and the `dataType` gotcha.
 
 ### Predefined Field Reference
 

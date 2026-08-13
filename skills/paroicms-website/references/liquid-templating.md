@@ -105,6 +105,7 @@ Parameters:
 - `sorting: "fieldName asc|desc"` - Sort order (optional). Use `"publishDate desc"` to sort by newest first. Can sort by any field.
 - `term: doc|nodeId` - Filter by taxonomy term (optional). Can be a document object, node ID string, or numeric node ID.
 - `labeledWith: "fieldName"` - Field name for taxonomy filtering (optional). Required when using `term`.
+- `where: "fieldName=value"` - Filter by a field value (optional). Exactly one equality condition on a varchar-stored field, compared as strings (numbers as `"2024"`, booleans as `"1"`/`"0"`). Applied SQL-side. Also available on `paginatedDocs`. Example: `where: "status=started"`.
 - `fields: "field1,field2,..."` - Comma-separated list of field names to load (optional). Optimizes performance by only loading specified fields.
 
 Examples:
@@ -124,6 +125,12 @@ Examples:
 ```
 
 **Note**: When using `term` and `labeledWith` together, the `term` parameter filters documents that have been labeled (tagged) with that specific taxonomy term in the specified field.
+
+Limits to be aware of:
+
+- **Only published documents are returned.** Drafts are always excluded (`onlyPublished` is hardcoded in the rendering pipeline; backend plugins can opt out via `PluginRenderingService.loadDocuments`).
+- **`where` supports a single `=` condition** on varchar-stored fields only; anything more complex (ranges, multiple conditions) must be done in a loop.
+- **An empty result is `undefined`, not an empty array.** `{% if posts %}` works to test for emptiness; `posts | size` on an empty result is `0` because `undefined | size` is `0`.
 
 ### set paginatedDocs and out infiniteLoading
 
@@ -222,10 +229,10 @@ Output content from a handler:
 
 ### Text Processing
 
-**`makeExcerpt`** - Truncate text to N words:
+**`makeExcerpt`** - Truncate text to N characters, cutting back to the previous word boundary and appending `…` when truncated:
 
 ```liquid
-{{ doc.excerpt | makeExcerpt: 60 }}
+{{ doc.excerpt | makeExcerpt: 200 }}
 ```
 
 ### Obfuscation
@@ -431,6 +438,19 @@ crumb.url              # Document URL (null for current)
     {% endif %}
   {% endfor %}
 {% endif %}
+```
+
+**Labeling terms are lightweight.** The items of a labeling field (`doc.field.tags`
+above) expose `title`, `url`, `nodeId`… but **no `field`** — you cannot read the
+term document's own fields from them. When you need a term's fields, load the
+taxonomy's children with `docs()` (which returns full documents) and match on
+`nodeId`:
+
+```liquid
+{% set terms = docs(site.home.routing.tags.children) %}
+{% for term in terms %}
+  {% if term.field.color %}...{% endif %}
+{% endfor %}
 ```
 
 ### Paginated List with Infinite Loading

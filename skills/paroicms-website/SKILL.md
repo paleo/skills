@@ -4,7 +4,7 @@ description: Guidelines for working on a ParoiCMS website directory. Use when de
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.1.0"
+  version: "0.2.0"
   repository: https://github.com/paleo/skills
 ---
 
@@ -18,6 +18,8 @@ Documentation:
 
 - [liquid-templating.md](references/liquid-templating.md) - LiquidJS syntax and ParoiCMS extensions
 - [plugins.md](references/plugins.md) - Available plugins with configuration examples
+- [api-plugin.md](references/api-plugin.md) - Remote HTTP API and the `paroicms` CLI (scripts, migrations, automation)
+- [custom-plugins.md](references/custom-plugins.md) - Building a site-local plugin (backend + admin-ui field widget)
 - [site-schema.md](references/site-schema.md) - Additional documentation on site schema.
 - [configuration.md](references/configuration.md) - Server configuration for standalone websites
 
@@ -138,7 +140,40 @@ my-website/
     "home": { "label": "Home page" },
     "post": {
       "label": "Post",
-      "fields": { "tags": { "label": "Tags" } }
+      "fields": {
+        "tags": { "label": "Tags" },
+        "status": {
+          "label": "Status",
+          "enum": {
+            "draft": "Draft",
+            "published": "Published"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+The `enum` map translates the values of an `enum` field in the Admin-UI while the
+stored keys stay unchanged; untranslated values fall back to the raw key.
+
+Node types and lists (`lists.<listName>`) accept `label` entries too. `description`
+entries are also allowed on node types and lists — they are not displayed in the
+Admin-UI but are consumed by AI tooling (e.g. the site-generator plugin).
+
+The `tabs` key overrides the admin-ui tab labels per document type. Tab names
+are `"parts"` (sub-parts) and `"edit"` (fields). Without an override, the
+default labels are used (e.g. "Sous-parties", "Éditer").
+
+```json
+{
+  "nodeTypes": {
+    "contest": {
+      "label": "Concours",
+      "tabs": {
+        "parts": "Communication"
+      }
     }
   }
 }
