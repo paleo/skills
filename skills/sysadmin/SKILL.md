@@ -5,7 +5,7 @@ license: CC0 1.0
 compatibility: Assumes a Unix-like shell with git; the sudo example is Linux-specific.
 metadata:
   author: Paleo
-  version: "0.3.0"
+  version: "0.3.1"
   repository: https://github.com/paleo/skills
 ---
 
@@ -26,9 +26,9 @@ The repo's own instructions tell you which role you have, often keyed to where y
 
 ## Support
 
-- Never write a report.
+- **Handoff.** To pass instructions or explanations to the operator, write `docs/handoff/<task-name>.md`. Its last instruction: delete this file.
 - Don't commit or push; leave that to the user.
-- **Handoff.** To pass instructions or explanations to the operator, write `docs/handoff/<task-name>.md`, then commit and push it. Its last instruction: delete this file.
+- Never write a report.
 
 ## Operating the machine — Operator only
 
