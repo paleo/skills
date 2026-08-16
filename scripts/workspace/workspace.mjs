@@ -15,11 +15,7 @@ await runWorkspace({
 
   preSetup: ({ isMainWorktree, currentWorktree }) => {
     if (!isMainWorktree) return;
-    // `.plans` must be usable: a symlink into the team plans repository clone, or a
-    // plain local directory (an external contributor without access to the clone).
-    // Only a missing or broken `.plans` fails setup. `--no` keeps npx from installing
-    // anything: the bin is `plans-share`, but the package is `@paleo/plans-share`, so a
-    // bare npx would look up an unrelated public name.
+    // `.plans` must be usable
     execFileSync("npx", ["--no", "plans-share", "check"], {
       cwd: currentWorktree,
       stdio: "inherit",
