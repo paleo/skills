@@ -61,6 +61,16 @@ TypeScript and JavaScript coding style conventions, built around top-down narrat
 npx skills add https://github.com/paleo/skills --skill top-down-typescript
 ```
 
+## Working on this repository
+
+After a fresh clone:
+
+```sh
+npm install
+mkdir .plans   # or use plans:setup if you have a team plans repository
+npm run workspace -- setup
+```
+
 ## License
 
 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
