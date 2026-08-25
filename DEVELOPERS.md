@@ -1,4 +1,4 @@
-# Development
+# Developer Guide
 
 This repository is a collection of agent skills under `skills/`, published on GitHub and installed by consumers with `npx skills add`. There is no application code, no build, and no test suite. See `docs/authoring-skills.md` for how a skill is structured and released.
 
