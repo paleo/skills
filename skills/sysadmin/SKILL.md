@@ -1,11 +1,11 @@
 ---
 name: sysadmin
-description: "Discipline for administering a server or workstation through a git repo that documents its config so it can be rebuilt from scratch."
+description: "Discipline for administering a server or workstation through a git repo that documents its config."
 license: CC0 1.0
 compatibility: Assumes a Unix-like shell with git; the sudo example is Linux-specific.
 metadata:
   author: Paleo
-  version: "0.3.1"
+  version: "0.3.2"
   repository: https://github.com/paleo/skills
 ---
 

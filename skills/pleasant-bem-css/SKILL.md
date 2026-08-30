@@ -1,10 +1,10 @@
 ---
 name: pleasant-bem-css
-description: Pleasant BEM Syntax and methodology. Read it each time you write CSS class names.
+description: Apply the Pleasant BEM syntax and methodology to CSS class names.
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.1.0"
+  version: "0.1.1"
   repository: https://github.com/paleo/skills
 ---
 

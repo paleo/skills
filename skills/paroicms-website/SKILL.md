@@ -1,10 +1,10 @@
 ---
 name: paroicms-website
-description: Guidelines for working on a ParoiCMS website directory. Use when developing or debugging website themes, templates, and configuration.
+description: "Develop a ParoiCMS website, including its site schema, theme, configuration, and custom plugins. Read before working on a ParoiCMS website, except when working on the ParoiCMS codebase itself."
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.2.1"
+  version: "0.2.2"
   repository: https://github.com/paleo/skills
 ---
 
@@ -41,7 +41,9 @@ npm run css:watch    # Build CSS bundle - watch mode
 
 When the server is running, the website is available at `http://localhost:8080`.
 
-Note: PostCSS is used to bundle CSS. The entry point is `theme/assets/css/index.css`, output is `theme/assets/bundle.css`.
+### CSS Organization
+
+PostCSS bundles `theme/assets/css/index.css` into `theme/assets/bundle.css`. Keep `index.css` as an import-only entry point. Split the source into focused files by responsibility, with the reset separate from theme rules. Suitable groups include variables, the site shell, related page families, plugin integrations, and utilities. Keep imports in intentional cascade order.
 
 ## Core Architecture Concepts
 
