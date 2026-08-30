@@ -4,7 +4,7 @@ description: Conventions for writing sharp, concise prose and Markdown, for huma
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.9.0"
+  version: "0.9.1"
   repository: https://github.com/paleo/skills
 ---
 
@@ -63,7 +63,7 @@ When you add one, invent a neutral case.
 
 ## Markdown
 
-Don't wrap text to 80 characters. Let lines run freely.
+In Markdown files, write each prose paragraph on one physical line. Never wrap prose to any width.
 
 ## Em-dash: the one audience difference
 
