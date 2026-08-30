@@ -206,6 +206,42 @@ Fields can be defined inline or referenced by name.
 }
 ```
 
+### Custom Field Localization
+
+For every inline custom field displayed as an Admin-UI input, add a `label` to
+each `site-schema.l10n.{lang}.json` file under the field's node type:
+
+```json
+{
+  "nodeTypes": {
+    "post": {
+      "fields": {
+        "subtitle": { "label": "Sous-titre" }
+      }
+    }
+  }
+}
+```
+
+This remains required when a predefined shorthand field is converted to object
+form only to set options. For example, an inline `htmlContent` field using the
+Tiptap plugin does not inherit the localized label of
+`"htmlContent[@paroicms/tiptap-editor-plugin]"`; without an explicit label, the
+Admin-UI displays the raw field name.
+
+Related cases:
+
+- A shorthand predefined field inherits its field library label. Override it only
+  when the website needs different wording.
+- Localize each `enum` value under the field's `enum` map, unless a custom widget
+  deliberately renders its own localized values.
+- An `infoPanel` field is not an input: localize its `content` instead of adding a
+  `label`.
+
+When changing `site-schema.json`, compare every inline field with every
+`site-schema.l10n.{lang}.json` file before finishing. Check the field label, enum
+values where applicable, and `infoPanel` content.
+
 ### Field Ordering
 
 The order of fields in the `fields` array determines their display order in the Admin-UI editor (top to bottom). To move a field above another, simply reorder it in the array.

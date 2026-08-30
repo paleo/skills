@@ -4,7 +4,7 @@ description: Guidelines for working on a ParoiCMS website directory. Use when de
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.2.0"
+  version: "0.2.1"
   repository: https://github.com/paleo/skills
 ---
 
@@ -133,6 +133,12 @@ my-website/
 ### Localization Files
 
 **`site-schema.l10n.{lang}.json`** - Labels for document types and fields displayed in Admin-UI:
+
+Give every inline custom field displayed as an Admin-UI input a localized `label`
+for every site language. This includes predefined fields converted from shorthand
+to object form to set options: object-form fields do not inherit the field library's
+label. See [site-schema.md](references/site-schema.md#custom-field-localization)
+for the required structure, exceptions, and audit checklist.
 
 ```json
 {
