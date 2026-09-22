@@ -3,7 +3,7 @@
 
 import { execFileSync, execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { runWorkspace } from "@paleo/workspace";
+import { runWorkspace } from "@alignfirst/workspace";
 
 await runWorkspace({
   workspaceScript: fileURLToPath(import.meta.url),
