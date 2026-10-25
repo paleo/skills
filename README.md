@@ -18,6 +18,14 @@ Pleasant BEM syntax and methodology for writing CSS class names.
 npx skills add https://github.com/paleo/skills --skill pleasant-bem-css
 ```
 
+## sharp-testing
+
+Rules for writing valuable automated tests without accumulating redundant or implementation-coupled checks.
+
+```sh
+npx skills add https://github.com/paleo/skills --skill sharp-testing
+```
+
 ## sharp-writing
 
 Conventions for writing sharp, concise prose and Markdown, for humans and AI agents.
