@@ -6,20 +6,22 @@ This repository is a collection of agent skills under `skills/`, published on Gi
 
 Work happens directly on `main`: this repo doesn't branch per ticket, and commits are pushed as they land.
 
-In the rare case a branch is needed, create a workspace — a git worktree plus its setup: `.plans` and `.local` symlinked to the main worktree, then `npm install`. There is no dev server, so the tooling runs portless: nothing to start, no `dev` script.
+For a branch, use an AlignFirst workspace. Setup shares `.plans` and `.local`, then runs `npm install`. This prepares the tooling only; there is no build or dev server.
 
-Run `npm run workspace -- --guide` to learn the full procedures.
+Run `npx -y alignfirst workspace --guide` for the procedures. Project-local `.plans` and `.local-wt` must be ignored and untracked before setup.
 
 ## Conventions
 
-- _Ticket ID_: numeric, incremented from the highest existing directory in `.plans/`. Ask the user when unsure.
-- _Commit messages_: conventional commits, e.g. `feat: improve the sysadmin skill`. Do not mention the ticket ID.
-- _Default branch_: `main`.
+`alignfirst.json` records the ticket pattern, commit style and default branch. Increment ticket IDs from the highest existing directory in `.plans/`; ask the user when unsure. Omit ticket IDs from commit messages.
+
+The main `.plans` symlink selects the `skills/` folder in the separate team plans repository. Preserve that location and history. After changing plans, run `npx -y alignfirst sync`.
 
 ## Everyday commands
 
 | Command | Purpose |
 |---------|---------|
+| `npx -y alignfirst context` | Load conventions, documentation map and protocols |
 | `npm run docmap` | Browse the documentation |
-| `npm run workspace -- <command>` | Manage worktree workspaces (`--guide` for the procedures) |
-| `npm run plans:sync` | Publish and retrieve the task plans (`.plans`) |
+| `npx -y alignfirst docmap --check` | Validate the documentation |
+| `npx -y alignfirst workspace <command>` | Manage workspaces |
+| `npx -y alignfirst sync` | Publish and retrieve task plans (`.plans`) |

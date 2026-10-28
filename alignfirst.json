@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "conventions": {
+    "ticketIdPattern": "^\\d+$",
+    "git": {
+      "defaultBranch": "main",
+      "commit": { "style": "conventionalCommit" }
+    }
+  },
+  "plans": { "repositoryFolder": "skills", "autoArchive": true },
+  "developerInstructions": "DEVELOPERS.md",
+  "workspace": {
+    "sharedDirs": [".local"],
+    "finalize": [
+      { "name": "Install dependencies", "run": ["npm", "install"] }
+    ]
+  }
+}

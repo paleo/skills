@@ -75,9 +75,15 @@ After a fresh clone:
 
 ```sh
 npm install
-mkdir .plans   # or use plans:setup if you have a team plans repository
-npm run workspace -- setup
+mkdir .plans
+npx -y alignfirst workspace setup
 ```
+
+To use an existing team plans clone, replace `mkdir .plans` with `npx -y alignfirst plans setup <plans-clone-path>`. The configured folder is `skills/`; preserve existing plans and their location.
+
+Setup shares `.plans` and `.local`, then installs dependencies. There is no build, test suite or dev server. See `DEVELOPERS.md` and `npx -y alignfirst workspace --guide`.
+
+The CLI is fetched on demand. `npm install -g alignfirst` is an optional convenience.
 
 ## License
 

@@ -3,14 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "docmap": "docmap",
-    "workspace": "node scripts/workspace/workspace.mjs",
-    "plans:setup": "plans-share setup --folder skills",
-    "plans:sync": "plans-share sync"
-  },
-  "devDependencies": {
-    "@paleo/docmap": "~0.9.1",
-    "@paleo/plans-share": "~0.6.1",
-    "@alignfirst/workspace": "~0.34.0"
+    "docmap": "npx -y alignfirst docmap",
+    "workspace": "npx -y alignfirst workspace"
   }
 }
