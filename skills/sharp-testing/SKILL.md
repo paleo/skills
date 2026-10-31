@@ -1,73 +1,73 @@
 ---
 name: sharp-testing
-description: "Rules for writing valuable automated tests without accumulating redundant or implementation-coupled checks. Read before implementing features, fixing bugs, refactoring, or writing and changing tests."
+description: Rules for writing automated tests that detect real mistakes, and for leaving out tests that cannot. Read before implementing a feature, fixing a bug, refactoring, or writing and changing tests.
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.1.0"
+  version: "0.2.0"
   repository: https://github.com/paleo/skills
 ---
 
 # Sharp Testing
 
-Add a permanent test only when it closes a meaningful gap in protection. A code change does not automatically need a new test.
+A test earns its place by detecting a plausible mistake that no other check detects. Writing a test and keeping it are separate decisions. The default for a change is no new test.
 
-## Justify the protection
+## When a test is justified
 
-**What plausible mistake would this catch that existing checks would miss, and why would it matter?** Name the incorrect behavior and its consequence. Merely observing that the code could change is insufficient.
+A permanent test answers: which plausible mistake would it catch, which existing check would miss it, and why would the mistake matter. Name the incorrect behavior and its consequence; that the code could change is no answer. Inspect the relevant tests first, and extend one when it can cover the missing case.
 
-Inspect relevant tests. Prefer extending an existing behavioral test when it can clearly cover the missing case. Adding no tests is valid when existing protection suffices.
+New functions, branches, files, and uncovered lines call for no test by themselves. Coverage locates gaps; it never justifies a test. Getters, pass-through code, constructors, type-level guarantees, and framework behavior need no test. A change with no new test is valid when existing protection suffices.
 
-New functions, branches, and files are not reasons to add tests. Use coverage to investigate gaps, never as a target.
+## Expected values
 
-## Test requirements
+Expected values come from the requirement: the domain rule, the specification, the compatibility obligation. The implementation shows what the code does, never what it should do.
 
-Derive expected results from intended behavior, domain rules, or compatibility obligations. The implementation shows what the code does; it does not establish what it should do.
+An expectation generated with the code under test, or copied from its output into a snapshot, fails only when the code changes. That is a change detector, not a guard. Validate a captured output against the requirement before adopting it as a fixture or a snapshot.
 
-Do not generate expectations with the code under test. Validate captured outputs against requirements before adopting them as fixtures or snapshots.
+## What to assert
 
-## Exercise the claimed behavior
+Assert the outcome a caller sees: the return value, the persisted state, the emitted event, the response. Leave unconstrained what is incidental: wording, extra fields, helper calls, internal ordering. A behavior-preserving refactor leaves assertions intact.
 
-Keep the production logic responsible for the claimed behavior real. Substitute dependencies outside it. A mock that implements the asserted behavior proves the mock. A mocked write proves a write was requested, not persistence.
+Exact text, bytes, or ordering are asserted only when that representation is the contract: an error code a client parses, a CLI flag, a serialized key, an API path, a migration name. Snapshots follow the same standard.
 
-A rejection test must exercise the intended guard rather than fail earlier for an unrelated reason. For bug fixes, demonstrate failure on the defective code for the intended reason and success after the fix. State when the defective baseline cannot be verified.
+An interaction is asserted only when the interaction is the contract, such as sending a notification exactly once.
 
-## Assert what matters
+A rejection test exercises the intended guard. Failing earlier for an unrelated reason proves nothing.
 
-Name tests after the behavior they protect. Assert relevant outcomes: returned values, persisted state, emitted events, or responses. Leave incidental wording, object fields, helper calls, and internal ordering unconstrained.
+One behavior per test, named after the behavior.
 
-Exact text, bytes, or ordering need assertions only when their representation is required. Apply the same standard to snapshots. Verify interactions when the interaction itself is the contract, such as sending a notification exactly once.
+## Real code, substituted boundaries
 
-## Cover distinct risks
+The production logic responsible for the claimed behavior runs for real. Substitute only what lies outside it: network, external services, clock, randomness, queues.
 
-Choose representative cases, meaningful boundaries, and relevant failure paths. Add cases for distinct defects, not every available input variation. Use properties when a general invariant expresses the requirement better than many examples.
+A mock shows that a call was requested, never its effect: a mocked write proves nothing about persistence. A mock that implements the asserted behavior proves the mock.
 
-Additional test layers must exercise additional risks. Do not replay every business-rule case through unit, integration, and end-to-end tests.
+An export, flag, wrapper, or hook whose only caller is a test is a design smell. Test through a real boundary instead.
 
-Consolidate repetitive cases without losing distinct boundaries. Keep setup readable rather than hiding it behind helper chains.
+## Choosing the boundary
 
-## Allow internal redesign
+- Pure logic (calculations, algorithms, state transitions, edge cases): a focused unit test.
+- Wiring, persistence, lifecycle: one test exercising real collaboration at the boundary, with hermetic dependencies, instead of a mocked unit test per layer.
+- Critical user journeys: a few end-to-end tests.
 
-Test through interfaces that express meaningful behavior. Behavior-preserving refactors should leave assertions intact.
+Each contract has one owner. A second layer must exercise a risk the owner cannot reach: transport, persistence, concurrency, lifecycle, authorization. Business-rule cases are proved once, at their owner.
 
-Avoid exports, flags, and wrappers whose sole purpose is exposing internals to tests. Improve the design when warranted; do not complicate production code to support an unnecessary test.
+## Choosing cases
 
-## Choose economical protection
+Pick representative cases, meaningful boundaries, and relevant failure paths: one case per distinct defect, not per input variation. When a general invariant expresses the requirement, one property test replaces many examples. Near-duplicates become one table-driven test, unless they protect different boundaries. Setup stays readable; helper chains hide the evidence.
 
-Choose the cheapest boundary that convincingly exercises the risk:
+## Bug fixes
 
-- Calculations, algorithms, state transitions: focused unit tests.
-- Wiring, persistence, lifecycle: integration tests with real collaboration.
-- Critical complete workflows: end-to-end tests.
+One regression test, at the owning boundary. It fails on the defective code for the bug's reason and passes after the fix. When the baseline cannot be run, say so.
 
-A broader test must justify its extra cost through additional protection.
+## Keeping and deleting
 
-Keep fixtures small, state isolated, and time and randomness controlled. Prefer completion signals over sleeps.
+Tests written to drive the implementation are scaffolding. Once the behavior is proved at its boundary they go, unless one owns pure, stable logic. A test-only seam goes with its test.
 
-## Retain useful protection
+Redundancy needs evidence: each failure mode the test detected remains detected elsewhere. A passing broader test, overlapping lines, or a history without failures establishes nothing.
 
-Writing a test and retaining it are separate decisions. Temporary development tests earn a permanent place through useful ongoing protection.
+Investigate a failing test before weakening its assertion or deleting it. It reveals a product bug, a bad fixture, or an obsolete contract.
 
-Remove tests of obsolete requirements. Remove redundant tests only when their distinct failure modes remain protected. A passing broader test, overlapping coverage, or a history without failures does not establish redundancy.
+## Hygiene
 
-Investigate a failing test before weakening its assertions or deleting it.
+Small fixtures, isolated state, controlled time and randomness, completion signals instead of sleeps.
