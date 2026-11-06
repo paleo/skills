@@ -6,7 +6,7 @@ compatibility: Assumes a Unix-like shell with git; the sudo example is Linux-spe
 metadata:
   author: Paleo
   version: "0.3.2"
-  repository: https://github.com/paleo/skills
+  repository: https://github.com/paleo/paleo-skills
 ---
 
 # Sysadmin: administering a machine from an ops repo

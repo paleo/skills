@@ -5,7 +5,7 @@ license: CC0 1.0
 metadata:
   author: Paleo
   version: "0.1.1"
-  repository: https://github.com/paleo/skills
+  repository: https://github.com/paleo/paleo-skills
 ---
 
 # Pleasant BEM Syntax and methodology

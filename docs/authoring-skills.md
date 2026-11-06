@@ -8,7 +8,7 @@ read_when:
 
 # Authoring Skills
 
-Each skill is a directory under `skills/`, installable with `npx skills add https://github.com/paleo/skills --skill <name>`.
+Each skill is a directory under `skills/`, installable with `npx skills add https://github.com/paleo/paleo-skills --skill <name>`.
 
 ## Structure
 
@@ -26,7 +26,7 @@ compatibility: <optional environment assumptions>
 metadata:
   author: Paleo
   version: "0.1.0"      # semver, bumped on every change
-  repository: https://github.com/paleo/skills
+  repository: https://github.com/paleo/paleo-skills
 ---
 ```
 

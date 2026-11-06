@@ -7,7 +7,7 @@ My personal collection of agent skills.
 Guidelines for working on a ParoiCMS website directory (themes, templates, configuration).
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill paroicms-website
+npx skills add https://github.com/paleo/paleo-skills --skill paroicms-website
 ```
 
 ## pleasant-bem-css
@@ -15,7 +15,7 @@ npx skills add https://github.com/paleo/skills --skill paroicms-website
 Pleasant BEM syntax and methodology for writing CSS class names.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill pleasant-bem-css
+npx skills add https://github.com/paleo/paleo-skills --skill pleasant-bem-css
 ```
 
 ## sharp-testing
@@ -23,7 +23,7 @@ npx skills add https://github.com/paleo/skills --skill pleasant-bem-css
 Rules for unit and integration tests without accumulating.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill sharp-testing
+npx skills add https://github.com/paleo/paleo-skills --skill sharp-testing
 ```
 
 ## sharp-writing
@@ -31,7 +31,7 @@ npx skills add https://github.com/paleo/skills --skill sharp-testing
 Conventions for writing sharp, concise prose and Markdown, for humans and AI agents.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill sharp-writing
+npx skills add https://github.com/paleo/paleo-skills --skill sharp-writing
 ```
 
 ## sysadmin
@@ -39,7 +39,7 @@ npx skills add https://github.com/paleo/skills --skill sharp-writing
 Discipline for administering a machine from a git repo that documents its configuration: `docs/` runbooks, a `.reports/` journal, and running commands safely.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill sysadmin
+npx skills add https://github.com/paleo/paleo-skills --skill sysadmin
 ```
 
 ### In your `AGENTS.md` or `CLAUDE.md` file
@@ -66,7 +66,7 @@ Replace the placeholders with values specific to the machine (the server) you ru
 TypeScript and JavaScript coding style conventions, built around top-down narrative ordering and functions over classes.
 
 ```sh
-npx skills add https://github.com/paleo/skills --skill top-down-typescript
+npx skills add https://github.com/paleo/paleo-skills --skill top-down-typescript
 ```
 
 ## Working on this repository
