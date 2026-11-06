@@ -4,7 +4,7 @@ description: Conventions for writing sharp, concise prose and Markdown, for huma
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.9.1"
+  version: "0.9.2"
   repository: https://github.com/paleo/paleo-skills
 ---
 

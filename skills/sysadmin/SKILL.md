@@ -5,7 +5,7 @@ license: CC0 1.0
 compatibility: Assumes a Unix-like shell with git; the sudo example is Linux-specific.
 metadata:
   author: Paleo
-  version: "0.3.2"
+  version: "0.3.3"
   repository: https://github.com/paleo/paleo-skills
 ---
 

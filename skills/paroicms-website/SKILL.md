@@ -4,7 +4,7 @@ description: "Develop a ParoiCMS website, including its site schema, theme, conf
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.2.2"
+  version: "0.2.3"
   repository: https://github.com/paleo/paleo-skills
 ---
 

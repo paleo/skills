@@ -4,7 +4,7 @@ description: TypeScript and JavaScript coding style conventions, centered on top
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.4.1"
+  version: "0.4.2"
   repository: https://github.com/paleo/paleo-skills
 ---
 

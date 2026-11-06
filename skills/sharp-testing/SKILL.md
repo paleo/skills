@@ -4,7 +4,7 @@ description: Rules for unit and integration tests. Read before implementing a fe
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.4.0"
+  version: "0.4.1"
   repository: https://github.com/paleo/paleo-skills
 ---
 
