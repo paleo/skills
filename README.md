@@ -20,7 +20,7 @@ npx skills add https://github.com/paleo/skills --skill pleasant-bem-css
 
 ## sharp-testing
 
-Rules for writing valuable automated tests without accumulating redundant or implementation-coupled checks.
+Rules for unit and integration tests without accumulating.
 
 ```sh
 npx skills add https://github.com/paleo/skills --skill sharp-testing

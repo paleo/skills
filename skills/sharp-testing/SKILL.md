@@ -1,16 +1,16 @@
 ---
 name: sharp-testing
-description: Rules for writing automated tests that detect real mistakes, and for leaving out tests that cannot. Read before implementing a feature, fixing a bug, refactoring, or writing and changing tests.
+description: Rules for unit and integration tests. Read before implementing a feature, fixing a bug, refactoring, or writing and changing these tests. E2E test design is outside this skill's scope.
 license: CC0 1.0
 metadata:
   author: Paleo
-  version: "0.2.0"
+  version: "0.4.0"
   repository: https://github.com/paleo/skills
 ---
 
 # Sharp Testing
 
-A test earns its place by detecting a plausible mistake that no other check detects. Writing a test and keeping it are separate decisions. The default for a change is no new test.
+A test earns its place by detecting a plausible mistake that no other check detects. The default for a change is no new test.
 
 ## When a test is justified
 
@@ -26,15 +26,23 @@ An expectation generated with the code under test, or copied from its output int
 
 ## What to assert
 
-Assert the outcome a caller sees: the return value, the persisted state, the emitted event, the response. Leave unconstrained what is incidental: wording, extra fields, helper calls, internal ordering. A behavior-preserving refactor leaves assertions intact.
+Assert behavior: computed results, selected data, state changes, emitted events, access controls. Leave incidental fields, helper calls and internal ordering unconstrained. A behavior-preserving refactor leaves assertions intact.
 
-Exact text, bytes, or ordering are asserted only when that representation is the contract: an error code a client parses, a CLI flag, a serialized key, an API path, a migration name. Snapshots follow the same standard.
+Exact representations require an executable or machine-readable contract. Name its consumer or compatibility obligation. Public visibility alone establishes neither.
 
 An interaction is asserted only when the interaction is the contract, such as sending a notification exactly once.
 
 A rejection test exercises the intended guard. Failing earlier for an unrelated reason proves nothing.
 
 One behavior per test, named after the behavior.
+
+## Presentation belongs to the product
+
+Code and templates own wording and presentation. Never assert authored copy: labels, help, diagnostics, documentation.
+
+UI components, rendering and event wiring need no unit tests. Test algorithms and domain rules directly, including frontend logic. Critical user interactions belong to E2E tests.
+
+Assert output data without fixing the surrounding prose. Test text processing through extraction, preservation, escaping or redaction of supplied input.
 
 ## Real code, substituted boundaries
 
@@ -48,7 +56,6 @@ An export, flag, wrapper, or hook whose only caller is a test is a design smell.
 
 - Pure logic (calculations, algorithms, state transitions, edge cases): a focused unit test.
 - Wiring, persistence, lifecycle: one test exercising real collaboration at the boundary, with hermetic dependencies, instead of a mocked unit test per layer.
-- Critical user journeys: a few end-to-end tests.
 
 Each contract has one owner. A second layer must exercise a risk the owner cannot reach: transport, persistence, concurrency, lifecycle, authorization. Business-rule cases are proved once, at their owner.
 
@@ -59,14 +66,6 @@ Pick representative cases, meaningful boundaries, and relevant failure paths: on
 ## Bug fixes
 
 One regression test, at the owning boundary. It fails on the defective code for the bug's reason and passes after the fix. When the baseline cannot be run, say so.
-
-## Keeping and deleting
-
-Tests written to drive the implementation are scaffolding. Once the behavior is proved at its boundary they go, unless one owns pure, stable logic. A test-only seam goes with its test.
-
-Redundancy needs evidence: each failure mode the test detected remains detected elsewhere. A passing broader test, overlapping lines, or a history without failures establishes nothing.
-
-Investigate a failing test before weakening its assertion or deleting it. It reveals a product bug, a bad fixture, or an obsolete contract.
 
 ## Hygiene
 
